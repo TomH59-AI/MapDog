@@ -59,6 +59,10 @@ app.get('/', (c) => {
                 <i class="fas fa-search mr-2"></i>Search
               </button>
             </div>
+            <p class="text-xs text-gray-500 mt-2">
+              <i class="fas fa-info-circle mr-1"></i>
+              Validated input • Proper error handling • Rate limit aware
+            </p>
           </div>
 
           {/* Quick Actions */}
@@ -118,10 +122,32 @@ app.get('/', (c) => {
 // API: Search parcels from MapWise
 app.get('/api/parcels/search', async (c) => {
   const county = c.req.query('county')
-  const limit = c.req.query('limit') || '10'
+  const limitStr = c.req.query('limit') || '10'
   
+  // ✅ BEST PRACTICE 1: Validate all user-supplied input
   if (!county) {
-    return c.json({ error: 'County parameter is required' }, 400)
+    return c.json({ 
+      error: 'County parameter is required',
+      hint: 'Provide a county name (e.g., ALACHUA, ORANGE, MIAMI-DADE)'
+    }, 400)
+  }
+
+  // Validate county format (letters, hyphens, spaces only)
+  const countyClean = county.trim().toUpperCase()
+  if (!/^[A-Z\s\-]+$/.test(countyClean)) {
+    return c.json({ 
+      error: 'Invalid county name format',
+      hint: 'County name should contain only letters, spaces, and hyphens'
+    }, 400)
+  }
+
+  // Validate limit parameter
+  const limit = parseInt(limitStr, 10)
+  if (isNaN(limit) || limit < 1 || limit > 100) {
+    return c.json({ 
+      error: 'Invalid limit parameter',
+      hint: 'Limit must be a number between 1 and 100'
+    }, 400)
   }
 
   const apiKey = c.env.MAPWISE_API_KEY || 'DEMO_KEY'
@@ -129,7 +155,7 @@ app.get('/api/parcels/search', async (c) => {
   try {
     // Call MapWise API
     const response = await fetch(
-      `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(county)}&limit=${limit}`,
+      `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=${limit}`,
       {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -138,27 +164,97 @@ app.get('/api/parcels/search', async (c) => {
       }
     )
 
+    // ✅ BEST PRACTICE 3: Handle non-200 HTTP status codes gracefully
     if (!response.ok) {
-      throw new Error(`MapWise API error: ${response.status}`)
+      const statusCode = response.status
+      let errorMessage = 'MapWise API error'
+      let userMessage = 'Failed to search parcels'
+
+      switch (statusCode) {
+        case 400:
+          errorMessage = 'Bad request - invalid parameters'
+          userMessage = 'Invalid search parameters. Please check county name.'
+          break
+        case 401:
+          errorMessage = 'Unauthorized - invalid API key'
+          userMessage = 'API authentication failed. Please contact support.'
+          break
+        case 403:
+          errorMessage = 'Forbidden - access denied'
+          userMessage = 'Access denied. Please check your subscription.'
+          break
+        case 404:
+          errorMessage = 'Not found - endpoint or resource not found'
+          userMessage = `No data available for ${countyClean} county.`
+          break
+        case 429:
+          errorMessage = 'Rate limit exceeded'
+          userMessage = 'Too many requests. Please wait a moment and try again.'
+          break
+        case 500:
+        case 502:
+        case 503:
+        case 504:
+          errorMessage = 'MapWise server error'
+          userMessage = 'MapWise service temporarily unavailable. Please try again later.'
+          break
+        default:
+          errorMessage = `HTTP ${statusCode} error`
+          userMessage = 'An unexpected error occurred. Please try again.'
+      }
+
+      console.error(`MapWise API Error: ${statusCode} - ${errorMessage}`)
+      
+      return c.json({ 
+        error: userMessage,
+        statusCode,
+        details: errorMessage
+      }, statusCode >= 500 ? 503 : statusCode)
     }
 
     const data = await response.json()
 
-    // Save search to database
+    // ✅ BEST PRACTICE 2: Check meta.record_count to determine if results were returned
+    const recordCount = data.meta?.record_count || 0
+    const totalCount = data.meta?.total_count || 0
+
+    if (recordCount === 0) {
+      console.log(`No results found for ${countyClean}`)
+      // Still return success, but with empty data array
+      return c.json({
+        success: true,
+        data: [],
+        meta: {
+          record_count: 0,
+          total_count: totalCount,
+          message: `No parcels found matching criteria in ${countyClean} county`
+        }
+      })
+    }
+
+    // Save successful search to database
     try {
       await c.env.DB.prepare(
         'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
-      ).bind(county, JSON.stringify({ limit }), data.data?.length || 0).run()
+      ).bind(countyClean, JSON.stringify({ limit }), recordCount).run()
     } catch (dbError) {
       console.error('Database save error:', dbError)
+      // Don't fail the request if DB save fails
     }
 
+    console.log(`Successfully retrieved ${recordCount} parcels for ${countyClean}`)
     return c.json(data)
+
   } catch (error) {
     console.error('API Error:', error)
+    
+    // Handle network errors, timeouts, etc.
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    
     return c.json({ 
-      error: 'Failed to fetch parcels',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      error: 'Failed to connect to MapWise API',
+      details: errorMessage,
+      hint: 'Please check your internet connection and try again'
     }, 500)
   }
 })

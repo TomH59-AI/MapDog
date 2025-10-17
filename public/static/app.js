@@ -16,8 +16,22 @@ async function searchParcels() {
   const county = document.getElementById('countyInput').value.trim().toUpperCase()
   const limit = document.getElementById('limitInput').value || 10
   
+  // Client-side validation
   if (!county) {
-    alert('Please enter a county name')
+    alert('⚠️ Please enter a county name\n\nExample: ALACHUA, ORANGE, MIAMI-DADE')
+    return
+  }
+  
+  // Validate county format
+  if (!/^[A-Z\s\-]+$/.test(county)) {
+    alert('⚠️ Invalid county name\n\nCounty name should contain only letters, spaces, and hyphens.\n\nExample: MIAMI-DADE, ST JOHNS')
+    return
+  }
+  
+  // Validate limit
+  const limitNum = parseInt(limit, 10)
+  if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+    alert('⚠️ Invalid limit\n\nLimit must be between 1 and 100')
     return
   }
   
@@ -27,15 +41,55 @@ async function searchParcels() {
     const response = await fetch(`/api/parcels/search?county=${encodeURIComponent(county)}&limit=${limit}`)
     const data = await response.json()
     
+    // Handle API errors with helpful messages
     if (data.error) {
-      throw new Error(data.details || data.error)
+      let errorMsg = data.error
+      
+      // Add hints if available
+      if (data.hint) {
+        errorMsg += '\n\n💡 ' + data.hint
+      }
+      
+      // Special handling for rate limiting
+      if (data.statusCode === 429) {
+        errorMsg += '\n\n⏱️ Please wait 30 seconds before searching again.'
+      }
+      
+      // Special handling for no API key
+      if (data.statusCode === 401) {
+        errorMsg += '\n\n🔑 The MapWise API key needs to be configured.'
+      }
+      
+      throw new Error(errorMsg)
     }
     
+    // Check if we got results (even if meta.record_count is 0)
+    const recordCount = data.meta?.record_count || 0
     currentResults = data.data || []
+    
+    if (recordCount === 0) {
+      const resultsDiv = document.getElementById('results')
+      resultsDiv.innerHTML = `
+        <div class="text-center py-8 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+          <i class="fas fa-search text-yellow-600 text-4xl mb-3"></i>
+          <p class="text-lg font-semibold text-gray-800">No parcels found for ${county}</p>
+          <p class="text-sm text-gray-600 mt-2">${data.meta?.message || 'Try a different county or adjust your search.'}</p>
+          ${data.meta?.total_count > 0 ? `
+            <p class="text-xs text-gray-500 mt-2">
+              Total parcels in ${county}: ${data.meta.total_count.toLocaleString()}
+            </p>
+          ` : ''}
+        </div>
+      `
+      loadStats()
+      return
+    }
+    
     displayResults(currentResults, county, data.meta)
     loadStats()
+    
   } catch (error) {
-    showError(`Search failed: ${error.message}`)
+    showError(error.message)
   } finally {
     showLoading(false)
   }
@@ -408,10 +462,25 @@ function showLoading(show) {
 // Show error message
 function showError(message) {
   const resultsDiv = document.getElementById('results')
+  
+  // Parse message for better display
+  const lines = message.split('\n').filter(line => line.trim())
+  
   resultsDiv.innerHTML = `
-    <div class="bg-red-100 border-2 border-red-400 rounded-lg p-4 text-center">
-      <i class="fas fa-exclamation-triangle text-red-600 text-3xl mb-2"></i>
-      <p class="text-red-800 font-semibold">${message}</p>
+    <div class="bg-red-100 border-2 border-red-400 rounded-lg p-6 text-center">
+      <i class="fas fa-exclamation-triangle text-red-600 text-4xl mb-3"></i>
+      ${lines.map((line, i) => {
+        if (line.startsWith('💡') || line.startsWith('⏱️') || line.startsWith('🔑')) {
+          return `<p class="text-sm text-gray-700 mt-2 bg-white p-2 rounded">${line}</p>`
+        }
+        return `<p class="text-red-800 font-semibold ${i > 0 ? 'mt-2' : ''}">${line}</p>`
+      }).join('')}
+      <button 
+        onclick="document.getElementById('results').innerHTML=''" 
+        class="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
+      >
+        Dismiss
+      </button>
     </div>
   `
 }
