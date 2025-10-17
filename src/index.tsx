@@ -65,6 +65,72 @@ app.get('/', (c) => {
             </p>
           </div>
 
+          {/* Mode Toggle */}
+          <div class="flex gap-2 mb-6 border-b-2 border-gray-200 pb-2">
+            <button 
+              id="countyModeBtn"
+              onclick="switchMode('county')"
+              class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg transition-all"
+            >
+              <i class="fas fa-map-marker-alt mr-2"></i>County Search
+            </button>
+            <button 
+              id="bulkModeBtn"
+              onclick="switchMode('bulk')"
+              class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
+            >
+              <i class="fas fa-layer-group mr-2"></i>Search Ring (Bulk PINs)
+            </button>
+          </div>
+
+          {/* Bulk PIN Search (Hidden by default) */}
+          <div id="bulkSearchSection" class="hidden mb-6">
+            <label class="block text-gray-700 text-lg font-semibold mb-3">
+              <i class="fas fa-layer-group text-purple-600 mr-2"></i>
+              Search Ring - Bulk PIN Lookup
+            </label>
+            <div class="mb-3">
+              <input 
+                type="text" 
+                id="searchRingName"
+                placeholder="Search Ring Name (e.g., Orlando Tower Site 1)"
+                class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
+              />
+            </div>
+            <div class="mb-3">
+              <input 
+                type="text" 
+                id="bulkCounty"
+                placeholder="County (e.g., ORANGE)"
+                class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
+              />
+            </div>
+            <textarea 
+              id="pinListInput"
+              placeholder="Paste PIN list (one per line):&#10;03869-010-000&#10;03869-020-000&#10;03869-030-000"
+              rows="6"
+              class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none text-sm font-mono"
+            ></textarea>
+            <div class="flex gap-3 mt-3">
+              <button 
+                onclick="bulkSearchParcels()"
+                class="flex-1 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                <i class="fas fa-search-plus mr-2"></i>Fetch All Parcels
+              </button>
+              <button 
+                onclick="clearBulkSearch()"
+                class="px-6 py-3 bg-gray-400 hover:bg-gray-500 text-white font-semibold rounded-lg transition-all"
+              >
+                <i class="fas fa-times mr-2"></i>Clear
+              </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">
+              <i class="fas fa-info-circle mr-1"></i>
+              Paste PINs from your search ring tool • Max 50 PINs per search
+            </p>
+          </div>
+
           {/* Quick Actions */}
           <div class="flex gap-3 mb-6">
             <button 
@@ -255,6 +321,104 @@ app.get('/api/parcels/search', async (c) => {
       error: 'Failed to connect to MapWise API',
       details: errorMessage,
       hint: 'Please check your internet connection and try again'
+    }, 500)
+  }
+})
+
+// API: Bulk PIN search for search rings
+app.post('/api/parcels/bulk-search', async (c) => {
+  try {
+    const { pins, county, searchRingName } = await c.req.json()
+    
+    // Validate input
+    if (!pins || !Array.isArray(pins) || pins.length === 0) {
+      return c.json({ 
+        error: 'PIN list is required',
+        hint: 'Provide an array of parcel PINs'
+      }, 400)
+    }
+    
+    if (!county) {
+      return c.json({ 
+        error: 'County parameter is required',
+        hint: 'Specify which county to search in'
+      }, 400)
+    }
+    
+    // Validate county format
+    const countyClean = county.trim().toUpperCase()
+    if (!/^[A-Z\s\-]+$/.test(countyClean)) {
+      return c.json({ 
+        error: 'Invalid county name format',
+        hint: 'County name should contain only letters, spaces, and hyphens'
+      }, 400)
+    }
+    
+    const apiKey = c.env.MAPWISE_API_KEY || 'DEMO_KEY'
+    const results = []
+    const errors = []
+    
+    // Search for each PIN (MapWise doesn't support bulk, so we batch)
+    for (const pin of pins.slice(0, 50)) { // Limit to 50 PINs per request
+      try {
+        const response = await fetch(
+          `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=100`,
+          {
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+        
+        if (response.ok) {
+          const data = await response.json()
+          // Find matching PIN in results
+          const match = data.data?.find((p: any) => 
+            p.identifiers?.pin === pin || 
+            p.identifiers?.pin_clean === pin.replace(/[^0-9]/g, '')
+          )
+          if (match) {
+            results.push(match)
+          }
+        }
+      } catch (error) {
+        errors.push({ pin, error: 'Failed to fetch' })
+      }
+    }
+    
+    // Save search ring to database if name provided
+    if (searchRingName) {
+      try {
+        await c.env.DB.prepare(
+          'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
+        ).bind(
+          countyClean, 
+          JSON.stringify({ type: 'bulk', pins, searchRingName }), 
+          results.length
+        ).run()
+      } catch (dbError) {
+        console.error('Database save error:', dbError)
+      }
+    }
+    
+    return c.json({
+      success: true,
+      results,
+      meta: {
+        requested: pins.length,
+        found: results.length,
+        errors: errors.length,
+        searchRingName: searchRingName || null
+      },
+      errors: errors.length > 0 ? errors : undefined
+    })
+    
+  } catch (error) {
+    console.error('Bulk search error:', error)
+    return c.json({ 
+      error: 'Failed to perform bulk search',
+      details: error instanceof Error ? error.message : 'Unknown error'
     }, 500)
   }
 })

@@ -1,5 +1,6 @@
 // MapDog - Site Acquisition Parcel Search Frontend
 let currentResults = []
+let currentMode = 'county' // 'county' or 'bulk'
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -10,6 +11,190 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter') searchParcels()
   })
 })
+
+// Switch between county and bulk search modes
+function switchMode(mode) {
+  currentMode = mode
+  
+  const countySection = document.getElementById('countyInput').parentElement.parentElement
+  const bulkSection = document.getElementById('bulkSearchSection')
+  const countyBtn = document.getElementById('countyModeBtn')
+  const bulkBtn = document.getElementById('bulkModeBtn')
+  
+  if (mode === 'county') {
+    countySection.classList.remove('hidden')
+    bulkSection.classList.add('hidden')
+    countyBtn.className = 'px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg transition-all'
+    bulkBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
+  } else {
+    countySection.classList.add('hidden')
+    bulkSection.classList.remove('hidden')
+    countyBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
+    bulkBtn.className = 'px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg transition-all'
+  }
+  
+  // Clear results when switching
+  document.getElementById('results').innerHTML = ''
+}
+
+// Bulk search parcels by PIN list
+async function bulkSearchParcels() {
+  const pinListText = document.getElementById('pinListInput').value.trim()
+  const county = document.getElementById('bulkCounty').value.trim().toUpperCase()
+  const searchRingName = document.getElementById('searchRingName').value.trim()
+  
+  if (!pinListText) {
+    alert('⚠️ Please paste a PIN list\n\nOne PIN per line from your search ring tool')
+    return
+  }
+  
+  if (!county) {
+    alert('⚠️ Please enter a county name\n\nExample: ORANGE, ALACHUA')
+    return
+  }
+  
+  // Parse PIN list (split by newlines, remove empty lines)
+  const pins = pinListText.split('\n')
+    .map(pin => pin.trim())
+    .filter(pin => pin.length > 0)
+  
+  if (pins.length === 0) {
+    alert('⚠️ No valid PINs found\n\nMake sure each PIN is on a new line')
+    return
+  }
+  
+  if (pins.length > 50) {
+    if (!confirm(`You have ${pins.length} PINs. Only the first 50 will be searched. Continue?`)) {
+      return
+    }
+  }
+  
+  showLoading(true, `Fetching ${Math.min(pins.length, 50)} parcels...`)
+  
+  try {
+    const response = await fetch('/api/parcels/bulk-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pins: pins.slice(0, 50),
+        county,
+        searchRingName: searchRingName || null
+      })
+    })
+    
+    const data = await response.json()
+    
+    if (data.error) {
+      throw new Error(data.error + (data.hint ? '\n\n💡 ' + data.hint : ''))
+    }
+    
+    currentResults = data.results || []
+    displayBulkResults(data, county, searchRingName)
+    loadStats()
+    
+  } catch (error) {
+    showError(error.message)
+  } finally {
+    showLoading(false)
+  }
+}
+
+// Display bulk search results
+function displayBulkResults(data, county, searchRingName) {
+  const resultsDiv = document.getElementById('results')
+  const requested = data.meta?.requested || 0
+  const found = data.meta?.found || 0
+  const errors = data.meta?.errors || 0
+  
+  if (found === 0) {
+    resultsDiv.innerHTML = `
+      <div class="text-center py-8 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+        <i class="fas fa-exclamation-triangle text-yellow-600 text-4xl mb-3"></i>
+        <p class="text-lg font-semibold text-gray-800">No parcels found</p>
+        <p class="text-sm text-gray-600 mt-2">Requested: ${requested} PINs • Found: 0</p>
+        <p class="text-xs text-gray-500 mt-2">Check that PINs are correct for ${county} county</p>
+      </div>
+    `
+    return
+  }
+  
+  resultsDiv.innerHTML = `
+    <div class="mb-4 p-4 bg-purple-50 border-2 border-purple-300 rounded-lg">
+      <div class="flex justify-between items-start">
+        <div>
+          <h3 class="text-xl font-bold text-gray-800">
+            <i class="fas fa-layer-group text-purple-600 mr-2"></i>
+            Search Ring Results
+          </h3>
+          ${searchRingName ? `<p class="text-sm font-semibold text-purple-700 mt-1">${searchRingName}</p>` : ''}
+          <p class="text-sm text-gray-600 mt-2">
+            <span class="font-semibold">County:</span> ${county} • 
+            <span class="font-semibold">Requested:</span> ${requested} PINs • 
+            <span class="font-semibold text-green-600">Found:</span> ${found} parcels
+            ${errors > 0 ? ` • <span class="font-semibold text-red-600">Errors:</span> ${errors}` : ''}
+          </p>
+        </div>
+        <button 
+          onclick="saveAllBulkParcels('${county}', '${searchRingName}')"
+          class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all"
+          title="Save all to favorites"
+        >
+          <i class="fas fa-save mr-2"></i>Save All
+        </button>
+      </div>
+    </div>
+    <div class="space-y-3 max-h-96 overflow-y-auto">
+      ${currentResults.map((parcel, index) => renderParcelCard(parcel, index, county)).join('')}
+    </div>
+  `
+}
+
+// Save all parcels from bulk search
+async function saveAllBulkParcels(county, searchRingName) {
+  if (!currentResults || currentResults.length === 0) {
+    alert('No parcels to save')
+    return
+  }
+  
+  const notes = searchRingName ? `Search Ring: ${searchRingName}` : 'Bulk search import'
+  let saved = 0
+  let errors = 0
+  
+  showLoading(true, `Saving ${currentResults.length} parcels...`)
+  
+  for (const parcel of currentResults) {
+    const pin = parcel.identifiers?.pin || 'unknown'
+    try {
+      const response = await fetch('/api/parcels/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parcelId: pin,
+          county,
+          parcelData: parcel,
+          notes
+        })
+      })
+      if (response.ok) saved++
+      else errors++
+    } catch (error) {
+      errors++
+    }
+  }
+  
+  showLoading(false)
+  alert(`✅ Saved ${saved} parcels${errors > 0 ? `\n⚠️ ${errors} failed to save` : ''}`)
+  loadStats()
+}
+
+// Clear bulk search form
+function clearBulkSearch() {
+  document.getElementById('pinListInput').value = ''
+  document.getElementById('bulkCounty').value = ''
+  document.getElementById('searchRingName').value = ''
+  document.getElementById('results').innerHTML = ''
+  currentResults = []
+}
 
 // Search parcels from MapWise API
 async function searchParcels() {
@@ -452,8 +637,15 @@ async function loadStats() {
 }
 
 // Show/hide loading indicator
-function showLoading(show) {
-  document.getElementById('loading').classList.toggle('hidden', !show)
+function showLoading(show, message = 'Fetching parcels...') {
+  const loadingDiv = document.getElementById('loading')
+  if (show) {
+    loadingDiv.innerHTML = `
+      <i class="fas fa-spinner fa-spin text-4xl text-blue-600"></i>
+      <p class="text-gray-600 mt-2">${message}</p>
+    `
+  }
+  loadingDiv.classList.toggle('hidden', !show)
   if (show) {
     document.getElementById('results').innerHTML = ''
   }
