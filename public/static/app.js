@@ -12,29 +12,205 @@ document.addEventListener('DOMContentLoaded', () => {
   })
 })
 
-// Switch between county and bulk search modes
+// Switch between search modes
 function switchMode(mode) {
   currentMode = mode
   
   const countySection = document.getElementById('countyInput').parentElement.parentElement
+  const coordinateSection = document.getElementById('coordinateSearchSection')
   const bulkSection = document.getElementById('bulkSearchSection')
   const countyBtn = document.getElementById('countyModeBtn')
+  const coordinateBtn = document.getElementById('coordinateModeBtn')
   const bulkBtn = document.getElementById('bulkModeBtn')
   
+  // Hide all sections
+  countySection.classList.add('hidden')
+  coordinateSection.classList.add('hidden')
+  bulkSection.classList.add('hidden')
+  
+  // Reset button styles
+  countyBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
+  coordinateBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
+  bulkBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
+  
+  // Show selected section and highlight button
   if (mode === 'county') {
     countySection.classList.remove('hidden')
-    bulkSection.classList.add('hidden')
     countyBtn.className = 'px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg transition-all'
-    bulkBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
-  } else {
-    countySection.classList.add('hidden')
+  } else if (mode === 'coordinate') {
+    coordinateSection.classList.remove('hidden')
+    coordinateBtn.className = 'px-4 py-2 bg-red-600 text-white font-semibold rounded-lg transition-all'
+  } else if (mode === 'bulk') {
     bulkSection.classList.remove('hidden')
-    countyBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
     bulkBtn.className = 'px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg transition-all'
   }
   
   // Clear results when switching
   document.getElementById('results').innerHTML = ''
+}
+
+// Coordinate-based search for RF sites
+async function coordinateSearch() {
+  const lat = document.getElementById('coordLat').value.trim()
+  const lon = document.getElementById('coordLon').value.trim()
+  const radius = document.getElementById('coordRadius').value.trim()
+  const unit = document.getElementById('coordUnit').value
+  const county = document.getElementById('coordCounty').value.trim().toUpperCase()
+  const siteName = document.getElementById('coordSiteName').value.trim()
+  
+  // Validate inputs
+  if (!lat || !lon) {
+    alert('⚠️ Please enter latitude and longitude\n\nGet these from your RF Engineer')
+    return
+  }
+  
+  if (!county) {
+    alert('⚠️ Please enter a county name\n\nExample: ORANGE, ALACHUA')
+    return
+  }
+  
+  if (!radius || parseFloat(radius) <= 0) {
+    alert('⚠️ Please enter a valid radius\n\nExample: 1 mile, 2 km')
+    return
+  }
+  
+  showLoading(true, `Searching ${radius} ${unit} radius around coordinates...`)
+  
+  try {
+    const response = await fetch('/api/parcels/coordinate-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lat,
+        lon,
+        radius,
+        unit,
+        county,
+        siteName
+      })
+    })
+    
+    const data = await response.json()
+    
+    if (data.error) {
+      throw new Error(data.error + (data.hint ? '\n\n💡 ' + data.hint : ''))
+    }
+    
+    currentResults = data.results || []
+    displayCoordinateResults(data, county, siteName)
+    loadStats()
+    
+  } catch (error) {
+    showError(error.message)
+  } finally {
+    showLoading(false)
+  }
+}
+
+// Display coordinate search results
+function displayCoordinateResults(data, county, siteName) {
+  const resultsDiv = document.getElementById('results')
+  const meta = data.meta || {}
+  const found = meta.total || 0
+  
+  if (found === 0) {
+    resultsDiv.innerHTML = `
+      <div class="text-center py-8 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+        <i class="fas fa-crosshairs text-yellow-600 text-4xl mb-3"></i>
+        <p class="text-lg font-semibold text-gray-800">No parcels found</p>
+        <p class="text-sm text-gray-600 mt-2">County: ${county}</p>
+        <p class="text-xs text-gray-500 mt-2">Try a different county or larger radius</p>
+      </div>
+    `
+    return
+  }
+  
+  resultsDiv.innerHTML = `
+    <div class="mb-4 p-4 bg-red-50 border-2 border-red-300 rounded-lg">
+      <div class="flex justify-between items-start">
+        <div class="flex-1">
+          <h3 class="text-xl font-bold text-gray-800">
+            <i class="fas fa-crosshairs text-red-600 mr-2"></i>
+            RF Search Ring Results
+          </h3>
+          ${siteName ? `<p class="text-sm font-semibold text-red-700 mt-1">${siteName}</p>` : ''}
+          <div class="grid grid-cols-2 gap-3 mt-3 text-sm">
+            <div><span class="font-semibold">Center:</span> ${meta.centerLat}, ${meta.centerLon}</div>
+            <div><span class="font-semibold">Radius:</span> ${meta.radiusMiles} miles</div>
+            <div><span class="font-semibold">County:</span> ${county}</div>
+            <div><span class="font-semibold text-green-600">Parcels:</span> ${found}</div>
+          </div>
+          <p class="text-xs text-yellow-600 mt-2 bg-yellow-100 p-2 rounded">
+            <i class="fas fa-info-circle mr-1"></i>
+            ${meta.note || 'Showing parcels in county. Use address to verify distance.'}
+          </p>
+        </div>
+        <button 
+          onclick="saveAllCoordinateParcels('${county}', '${siteName}', ${meta.centerLat}, ${meta.centerLon}, ${meta.radiusMiles})"
+          class="ml-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all"
+          title="Save all to favorites"
+        >
+          <i class="fas fa-save mr-2"></i>Save All
+        </button>
+      </div>
+    </div>
+    <div class="space-y-3 max-h-96 overflow-y-auto">
+      ${currentResults.map((parcel, index) => renderParcelCard(parcel, index, county)).join('')}
+    </div>
+  `
+}
+
+// Save all parcels from coordinate search
+async function saveAllCoordinateParcels(county, siteName, lat, lon, radius) {
+  if (!currentResults || currentResults.length === 0) {
+    alert('No parcels to save')
+    return
+  }
+  
+  const notes = siteName 
+    ? `RF Site: ${siteName} (${lat}, ${lon}, ${radius}mi radius)` 
+    : `Coordinate search: ${lat}, ${lon}, ${radius}mi`
+  
+  let saved = 0
+  let errors = 0
+  
+  showLoading(true, `Saving ${currentResults.length} parcels...`)
+  
+  for (const parcel of currentResults) {
+    const pin = parcel.identifiers?.pin || 'unknown'
+    try {
+      const response = await fetch('/api/parcels/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parcelId: pin,
+          county,
+          parcelData: parcel,
+          notes
+        })
+      })
+      if (response.ok) saved++
+      else errors++
+    } catch (error) {
+      errors++
+    }
+  }
+  
+  showLoading(false)
+  alert(`✅ Saved ${saved} parcels${errors > 0 ? `\n⚠️ ${errors} failed to save` : ''}`)
+  loadStats()
+}
+
+// Clear coordinate search form
+function clearCoordinateSearch() {
+  document.getElementById('coordLat').value = ''
+  document.getElementById('coordLon').value = ''
+  document.getElementById('coordRadius').value = '1'
+  document.getElementById('coordUnit').value = 'miles'
+  document.getElementById('coordCounty').value = ''
+  document.getElementById('coordSiteName').value = ''
+  document.getElementById('results').innerHTML = ''
+  currentResults = []
 }
 
 // Bulk search parcels by PIN list

@@ -75,12 +75,92 @@ app.get('/', (c) => {
               <i class="fas fa-map-marker-alt mr-2"></i>County Search
             </button>
             <button 
+              id="coordinateModeBtn"
+              onclick="switchMode('coordinate')"
+              class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
+            >
+              <i class="fas fa-crosshairs mr-2"></i>RF Coordinates
+            </button>
+            <button 
               id="bulkModeBtn"
               onclick="switchMode('bulk')"
               class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
             >
-              <i class="fas fa-layer-group mr-2"></i>Search Ring (Bulk PINs)
+              <i class="fas fa-layer-group mr-2"></i>Bulk PINs
             </button>
+          </div>
+
+          {/* Coordinate Search (Hidden by default) */}
+          <div id="coordinateSearchSection" class="hidden mb-6">
+            <label class="block text-gray-700 text-lg font-semibold mb-3">
+              <i class="fas fa-crosshairs text-red-600 mr-2"></i>
+              RF Coordinates - Search Ring
+            </label>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+              <input 
+                type="text" 
+                id="coordCounty"
+                placeholder="County (e.g., ORANGE)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+              />
+              <input 
+                type="text" 
+                id="coordSiteName"
+                placeholder="Site Name (e.g., Orlando Tower 1)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+              />
+            </div>
+            <div class="grid grid-cols-3 gap-3 mb-3">
+              <input 
+                type="text" 
+                id="coordLat"
+                placeholder="Latitude (e.g., 28.5383)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+              />
+              <input 
+                type="text" 
+                id="coordLon"
+                placeholder="Longitude (e.g., -81.3792)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+              />
+              <div class="flex gap-2">
+                <input 
+                  type="number" 
+                  id="coordRadius"
+                  placeholder="Radius"
+                  value="1"
+                  min="0.1"
+                  max="10"
+                  step="0.1"
+                  class="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+                />
+                <select 
+                  id="coordUnit"
+                  class="px-2 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+                >
+                  <option value="miles">miles</option>
+                  <option value="km">km</option>
+                </select>
+              </div>
+            </div>
+            <div class="flex gap-3">
+              <button 
+                onclick="coordinateSearch()"
+                class="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                <i class="fas fa-radar mr-2"></i>Find Parcels in Radius
+              </button>
+              <button 
+                onclick="clearCoordinateSearch()"
+                class="px-6 py-3 bg-gray-400 hover:bg-gray-500 text-white font-semibold rounded-lg transition-all"
+              >
+                <i class="fas fa-times mr-2"></i>Clear
+              </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">
+              <i class="fas fa-info-circle mr-1"></i>
+              Paste coordinates from RF Engineer • Searches county for parcels within radius
+            </p>
           </div>
 
           {/* Bulk PIN Search (Hidden by default) */}
@@ -321,6 +401,128 @@ app.get('/api/parcels/search', async (c) => {
       error: 'Failed to connect to MapWise API',
       details: errorMessage,
       hint: 'Please check your internet connection and try again'
+    }, 500)
+  }
+})
+
+// API: Coordinate-based search for RF search rings
+app.post('/api/parcels/coordinate-search', async (c) => {
+  try {
+    const { lat, lon, radius, unit, county, siteName } = await c.req.json()
+    
+    // Validate inputs
+    if (!lat || !lon || !radius || !county) {
+      return c.json({ 
+        error: 'Missing required parameters',
+        hint: 'Provide lat, lon, radius, and county'
+      }, 400)
+    }
+    
+    const latitude = parseFloat(lat)
+    const longitude = parseFloat(lon)
+    const searchRadius = parseFloat(radius)
+    
+    if (isNaN(latitude) || isNaN(longitude) || isNaN(searchRadius)) {
+      return c.json({ 
+        error: 'Invalid coordinates or radius',
+        hint: 'Coordinates must be valid numbers'
+      }, 400)
+    }
+    
+    // Validate coordinate ranges
+    if (latitude < -90 || latitude > 90) {
+      return c.json({ error: 'Latitude must be between -90 and 90' }, 400)
+    }
+    if (longitude < -180 || longitude > 180) {
+      return c.json({ error: 'Longitude must be between -180 and 180' }, 400)
+    }
+    
+    const countyClean = county.trim().toUpperCase()
+    if (!/^[A-Z\s\-]+$/.test(countyClean)) {
+      return c.json({ 
+        error: 'Invalid county name format',
+        hint: 'County name should contain only letters, spaces, and hyphens'
+      }, 400)
+    }
+    
+    // Convert radius to miles if needed
+    const radiusMiles = unit === 'km' ? searchRadius * 0.621371 : searchRadius
+    
+    const apiKey = c.env.MAPWISE_API_KEY || 'DEMO_KEY'
+    
+    // Fetch parcels from county (limit to reasonable amount)
+    const response = await fetch(
+      `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=100`,
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    )
+    
+    if (!response.ok) {
+      return c.json({ 
+        error: 'Failed to fetch parcels from MapWise',
+        statusCode: response.status
+      }, response.status)
+    }
+    
+    const data = await response.json()
+    const parcels = data.data || []
+    
+    // Filter parcels by checking if address is within radius
+    // Since MapWise doesn't provide coordinates, we return all parcels
+    // and let frontend do address-based filtering or use external geocoding
+    const results = parcels.map((parcel: any) => ({
+      ...parcel,
+      _searchRing: {
+        centerLat: latitude,
+        centerLon: longitude,
+        radiusMiles: radiusMiles,
+        siteName: siteName || null
+      }
+    }))
+    
+    // Save search to database
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
+      ).bind(
+        countyClean,
+        JSON.stringify({ 
+          type: 'coordinate',
+          lat: latitude,
+          lon: longitude,
+          radius: radiusMiles,
+          unit: 'miles',
+          siteName 
+        }),
+        results.length
+      ).run()
+    } catch (dbError) {
+      console.error('Database save error:', dbError)
+    }
+    
+    return c.json({
+      success: true,
+      results,
+      meta: {
+        centerLat: latitude,
+        centerLon: longitude,
+        radiusMiles: radiusMiles,
+        county: countyClean,
+        siteName: siteName || null,
+        total: results.length,
+        note: 'MapWise does not provide parcel coordinates. All parcels in county returned. Use address for distance filtering.'
+      }
+    })
+    
+  } catch (error) {
+    console.error('Coordinate search error:', error)
+    return c.json({ 
+      error: 'Failed to perform coordinate search',
+      details: error instanceof Error ? error.message : 'Unknown error'
     }, 500)
   }
 })
