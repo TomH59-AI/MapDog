@@ -148,7 +148,7 @@ app.get('/api/parcels/search', async (c) => {
     try {
       await c.env.DB.prepare(
         'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
-      ).bind(county, JSON.stringify({ limit }), data.features?.length || 0).run()
+      ).bind(county, JSON.stringify({ limit }), data.data?.length || 0).run()
     } catch (dbError) {
       console.error('Database save error:', dbError)
     }

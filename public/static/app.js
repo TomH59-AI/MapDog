@@ -31,8 +31,8 @@ async function searchParcels() {
       throw new Error(data.details || data.error)
     }
     
-    currentResults = data.features || []
-    displayResults(currentResults, county)
+    currentResults = data.data || []
+    displayResults(currentResults, county, data.meta)
     loadStats()
   } catch (error) {
     showError(`Search failed: ${error.message}`)
@@ -42,10 +42,10 @@ async function searchParcels() {
 }
 
 // Display search results
-function displayResults(features, county) {
+function displayResults(parcels, county, meta) {
   const resultsDiv = document.getElementById('results')
   
-  if (!features || features.length === 0) {
+  if (!parcels || parcels.length === 0) {
     resultsDiv.innerHTML = `
       <div class="text-center py-8 text-gray-500">
         <i class="fas fa-search text-4xl mb-3"></i>
@@ -55,23 +55,31 @@ function displayResults(features, county) {
     return
   }
   
+  const totalCount = meta?.total_count ? ` (${meta.total_count.toLocaleString()} total available)` : ''
+  
   resultsDiv.innerHTML = `
     <div class="mb-4 flex justify-between items-center">
       <h3 class="text-xl font-bold text-gray-800">
         <i class="fas fa-map-marked-alt text-blue-600 mr-2"></i>
-        Found ${features.length} parcels in ${county}
+        Found ${parcels.length} parcels in ${county}${totalCount}
       </h3>
     </div>
     <div class="space-y-3 max-h-96 overflow-y-auto">
-      ${features.map((feature, index) => renderParcelCard(feature, index, county)).join('')}
+      ${parcels.map((parcel, index) => renderParcelCard(parcel, index, county)).join('')}
     </div>
   `
 }
 
 // Render individual parcel card
-function renderParcelCard(feature, index, county) {
-  const props = feature.properties || {}
-  const parcelId = props.parcelid || props.PARCELID || props.id || `${county}-${index}`
+function renderParcelCard(parcel, index, county) {
+  const pin = parcel.identifiers?.pin || `${county}-${index}`
+  const owner = parcel.owner?.primary_name || 'N/A'
+  const address = parcel.site?.address || 'No address'
+  const acres = parcel.land?.acres_gis || parcel.land?.acres_deed || 'N/A'
+  const zoning = parcel.land?.zoning || 'N/A'
+  const landUse = parcel.land?.land_use?.luse_desc || 'N/A'
+  const marketValue = parcel.valuation?.market?.total || 0
+  const city = parcel.site?.city || parcel.owner?.city || 'N/A'
   
   return `
     <div class="bg-gray-50 border-2 border-gray-200 rounded-lg p-4 hover:border-blue-400 transition-all">
@@ -79,18 +87,42 @@ function renderParcelCard(feature, index, county) {
         <div class="flex-1">
           <h4 class="font-bold text-lg text-gray-800 mb-2">
             <i class="fas fa-map-pin text-red-500 mr-2"></i>
-            Parcel ID: ${parcelId}
+            PIN: ${pin}
           </h4>
-          <div class="grid grid-cols-2 gap-2 text-sm">
-            ${Object.entries(props).slice(0, 8).map(([key, value]) => `
-              <div class="text-gray-600">
-                <span class="font-semibold">${key}:</span> ${value || 'N/A'}
-              </div>
-            `).join('')}
+          <div class="grid grid-cols-2 gap-2 text-sm mb-2">
+            <div class="text-gray-600">
+              <span class="font-semibold">Owner:</span> ${owner}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">City:</span> ${city}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Address:</span> ${address}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Acres:</span> ${typeof acres === 'string' ? parseFloat(acres).toFixed(2) : acres}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Zoning:</span> ${zoning}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Land Use:</span> ${landUse}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Market Value:</span> $${marketValue.toLocaleString()}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">County:</span> ${county}
+            </div>
           </div>
+          ${parcel.meta?.pa_pin_link ? `
+            <a href="${parcel.meta.pa_pin_link}" target="_blank" class="text-blue-600 hover:text-blue-800 text-xs">
+              <i class="fas fa-external-link-alt mr-1"></i>View Property Details
+            </a>
+          ` : ''}
         </div>
         <button 
-          onclick="saveParcel('${parcelId}', '${county}', ${index})"
+          onclick="saveParcel('${pin.replace(/'/g, "\\'")}', '${county}', ${index})"
           class="ml-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all transform hover:scale-105"
           title="Save to favorites"
         >
@@ -172,7 +204,12 @@ async function viewSavedParcels() {
 // Render saved parcel card
 function renderSavedParcelCard(parcel) {
   const data = JSON.parse(parcel.parcel_data)
-  const props = data.properties || {}
+  const pin = data.identifiers?.pin || parcel.parcel_id
+  const owner = data.owner?.primary_name || 'N/A'
+  const address = data.site?.address || 'No address'
+  const acres = data.land?.acres_gis || data.land?.acres_deed || 'N/A'
+  const zoning = data.land?.zoning || 'N/A'
+  const marketValue = data.valuation?.market?.total || 0
   
   return `
     <div class="bg-green-50 border-2 border-green-300 rounded-lg p-4">
@@ -180,23 +217,41 @@ function renderSavedParcelCard(parcel) {
         <div class="flex-1">
           <h4 class="font-bold text-lg text-gray-800 mb-2">
             <i class="fas fa-map-pin text-green-600 mr-2"></i>
-            ${parcel.parcel_id} - ${parcel.county}
+            ${pin} - ${parcel.county}
           </h4>
           ${parcel.notes ? `
-            <p class="text-sm text-gray-700 mb-2 italic">
+            <p class="text-sm text-gray-700 mb-2 italic bg-yellow-100 p-2 rounded">
               <i class="fas fa-sticky-note mr-1"></i>${parcel.notes}
             </p>
           ` : ''}
           <div class="grid grid-cols-2 gap-2 text-sm">
-            ${Object.entries(props).slice(0, 6).map(([key, value]) => `
-              <div class="text-gray-600">
-                <span class="font-semibold">${key}:</span> ${value || 'N/A'}
-              </div>
-            `).join('')}
+            <div class="text-gray-600">
+              <span class="font-semibold">Owner:</span> ${owner}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Address:</span> ${address}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Acres:</span> ${typeof acres === 'string' ? parseFloat(acres).toFixed(2) : acres}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Zoning:</span> ${zoning}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Market Value:</span> $${marketValue.toLocaleString()}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Status:</span> ${parcel.status}
+            </div>
           </div>
           <p class="text-xs text-gray-500 mt-2">
             Saved: ${new Date(parcel.created_at).toLocaleDateString()}
           </p>
+          ${data.meta?.pa_pin_link ? `
+            <a href="${data.meta.pa_pin_link}" target="_blank" class="text-blue-600 hover:text-blue-800 text-xs mt-2 inline-block">
+              <i class="fas fa-external-link-alt mr-1"></i>View Property Details
+            </a>
+          ` : ''}
         </div>
         <button 
           onclick="deleteSavedParcel(${parcel.id})"
@@ -287,23 +342,34 @@ function exportResults() {
     return
   }
   
-  // Extract all unique keys from properties
-  const allKeys = new Set()
-  currentResults.forEach(feature => {
-    Object.keys(feature.properties || {}).forEach(key => allKeys.add(key))
+  // Define CSV columns
+  const headers = [
+    'PIN', 'County', 'Owner', 'Address', 'City', 'Zipcode', 
+    'Acres (GIS)', 'Acres (Deed)', 'Zoning', 'Land Use', 
+    'Market Value', 'Assessed Value', 'Year Built', 'Property Link'
+  ]
+  
+  // Build CSV rows
+  const rows = currentResults.map(parcel => {
+    return [
+      parcel.identifiers?.pin || '',
+      parcel.meta?.county || '',
+      parcel.owner?.primary_name || '',
+      parcel.site?.address || parcel.owner?.address_line1 || '',
+      parcel.site?.city || parcel.owner?.city || '',
+      parcel.site?.zipcode || parcel.owner?.zipcode || '',
+      parcel.land?.acres_gis || '',
+      parcel.land?.acres_deed || '',
+      parcel.land?.zoning || '',
+      parcel.land?.land_use?.luse_desc || '',
+      parcel.valuation?.market?.total || '',
+      parcel.valuation?.assessed_total || '',
+      parcel.building?.year_built_actual || '',
+      parcel.meta?.pa_pin_link || ''
+    ].map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')
   })
   
-  // Build CSV
-  const headers = Array.from(allKeys).join(',')
-  const rows = currentResults.map(feature => {
-    const props = feature.properties || {}
-    return Array.from(allKeys).map(key => {
-      const value = props[key] || ''
-      return `"${String(value).replace(/"/g, '""')}"`
-    }).join(',')
-  })
-  
-  const csv = [headers, ...rows].join('\n')
+  const csv = [headers.join(','), ...rows].join('\n')
   
   // Download
   const blob = new Blob([csv], { type: 'text/csv' })
