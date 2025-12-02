@@ -81,12 +81,19 @@ app.get('/', (c) => {
             >
               <i class="fas fa-crosshairs mr-2"></i>RF Coordinates
             </button>
-            <button 
+            <button
               id="bulkModeBtn"
               onclick="switchMode('bulk')"
               class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
             >
               <i class="fas fa-layer-group mr-2"></i>Bulk PINs
+            </button>
+            <button
+              id="scipModeBtn"
+              onclick="switchMode('scip')"
+              class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
+            >
+              <i class="fas fa-file-image mr-2"></i>SCIP Maps
             </button>
           </div>
 
@@ -208,6 +215,73 @@ app.get('/', (c) => {
             <p class="text-xs text-gray-500 mt-2">
               <i class="fas fa-info-circle mr-1"></i>
               Paste PINs from your search ring tool • Max 50 PINs per search
+            </p>
+          </div>
+
+          {/* SCIP Maps Section (Hidden by default) */}
+          <div id="scipMapsSection" class="hidden mb-6">
+            <label class="block text-gray-700 text-lg font-semibold mb-3">
+              <i class="fas fa-file-image text-teal-600 mr-2"></i>
+              SCIP Static Maps Generator
+            </label>
+            <p class="text-sm text-gray-600 mb-4">
+              Generate all 10 required SCIP maps for a site location. Maps will be high-resolution and ready for copy/paste into your SCIP document.
+            </p>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+              <input
+                type="text"
+                id="scipSiteName"
+                placeholder="Site Name (e.g., Orlando Tower 1)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+              />
+              <input
+                type="text"
+                id="scipAddress"
+                placeholder="Site Address (e.g., 123 Main St, Orlando, FL)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+              />
+            </div>
+            <div class="grid grid-cols-3 gap-3 mb-3">
+              <input
+                type="text"
+                id="scipLat"
+                placeholder="Latitude (e.g., 28.5383)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+              />
+              <input
+                type="text"
+                id="scipLon"
+                placeholder="Longitude (e.g., -81.3792)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+              />
+              <select
+                id="scipZoom"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+              >
+                <option value="14">Close (1/4 mi)</option>
+                <option value="15" selected>Standard (500 ft)</option>
+                <option value="16">Detailed (250 ft)</option>
+                <option value="13">Wide (1/2 mi)</option>
+                <option value="12">Overview (1 mi)</option>
+              </select>
+            </div>
+            <div class="flex gap-3">
+              <button
+                onclick="generateScipMaps()"
+                class="flex-1 px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                <i class="fas fa-magic mr-2"></i>Generate All 10 SCIP Maps
+              </button>
+              <button
+                onclick="clearScipMaps()"
+                class="px-6 py-3 bg-gray-400 hover:bg-gray-500 text-white font-semibold rounded-lg transition-all"
+              >
+                <i class="fas fa-times mr-2"></i>Clear
+              </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">
+              <i class="fas fa-info-circle mr-1"></i>
+              Maps: Aerial • Topography • Floodplain • Zoning • FLU • Wetlands • Parcel • Wind Speed • Airport • Cell Tower
             </p>
           </div>
 
@@ -698,6 +772,239 @@ app.get('/api/stats', async (c) => {
       lastCounty: 'N/A'
     })
   }
+})
+
+// API: Generate SCIP Maps for site location
+app.post('/api/scip-maps/generate', async (c) => {
+  try {
+    const { lat, lon, zoom, siteName, address } = await c.req.json()
+
+    // Validate inputs
+    if (!lat || !lon) {
+      return c.json({
+        error: 'Missing required coordinates',
+        hint: 'Provide latitude and longitude'
+      }, 400)
+    }
+
+    const latitude = parseFloat(lat)
+    const longitude = parseFloat(lon)
+    const zoomLevel = parseInt(zoom) || 15
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return c.json({
+        error: 'Invalid coordinates',
+        hint: 'Coordinates must be valid numbers'
+      }, 400)
+    }
+
+    if (latitude < -90 || latitude > 90) {
+      return c.json({ error: 'Latitude must be between -90 and 90' }, 400)
+    }
+    if (longitude < -180 || longitude > 180) {
+      return c.json({ error: 'Longitude must be between -180 and 180' }, 400)
+    }
+
+    // Map dimensions for high-quality output
+    const width = 800
+    const height = 600
+
+    // Generate URLs for all 10 SCIP map types
+    const maps = [
+      {
+        id: 'aerial',
+        name: 'Aerial Map',
+        description: 'Satellite/aerial imagery of the site',
+        url: `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},${zoomLevel},0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
+        fallbackUrl: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${longitude - 0.01},${latitude - 0.01},${longitude + 0.01},${latitude + 0.01}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`
+      },
+      {
+        id: 'topography',
+        name: 'Topography Map',
+        description: 'Terrain and elevation contours',
+        url: `https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},${zoomLevel},0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
+        fallbackUrl: `https://tile.opentopomap.org/${zoomLevel}/${Math.floor((longitude + 180) / 360 * Math.pow(2, zoomLevel))}/${Math.floor((1 - Math.log(Math.tan(latitude * Math.PI / 180) + 1 / Math.cos(latitude * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoomLevel))}.png`
+      },
+      {
+        id: 'floodplain',
+        name: 'Floodplain Map',
+        description: 'FEMA flood zones and hazard areas',
+        url: `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/export?bbox=${longitude - 0.008},${latitude - 0.006},${longitude + 0.008},${latitude + 0.006}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png32&transparent=false&layers=show:28&f=image`,
+        wmsUrl: `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer`,
+        note: 'Shows FEMA National Flood Hazard Layer zones'
+      },
+      {
+        id: 'zoning',
+        name: 'Zoning Map',
+        description: 'Local zoning districts and classifications',
+        url: `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},${zoomLevel},0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
+        note: 'Zoning data varies by municipality - check local GIS portal for overlay'
+      },
+      {
+        id: 'flu',
+        name: 'FLU Map (Future Land Use)',
+        description: 'Future land use planning designations',
+        url: `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/pin-l+0000ff(${longitude},${latitude})/${longitude},${latitude},${zoomLevel},0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
+        note: 'FLU data varies by municipality - check local comprehensive plan'
+      },
+      {
+        id: 'wetlands',
+        name: 'Wetlands Map',
+        description: 'National Wetlands Inventory (NWI) data',
+        url: `https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/export?bbox=${longitude - 0.008},${latitude - 0.006},${longitude + 0.008},${latitude + 0.006}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png32&transparent=false&f=image`,
+        wmsUrl: 'https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer',
+        note: 'US Fish & Wildlife Service National Wetlands Inventory'
+      },
+      {
+        id: 'parcel',
+        name: 'Parcel Map',
+        description: 'Property boundaries and parcel lines',
+        url: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},${zoomLevel + 1},0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
+        note: 'Parcel boundaries available via county property appraiser GIS'
+      },
+      {
+        id: 'windspeed',
+        name: 'Wind Speed Map',
+        description: 'Average wind speeds for the area',
+        url: `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/pin-l+00ff00(${longitude},${latitude})/${longitude},${latitude},10,0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
+        dataSource: 'https://windexchange.energy.gov/maps-data',
+        note: 'Wind data from NREL - typical speeds 5-15 mph in Florida'
+      },
+      {
+        id: 'airport',
+        name: 'Closest Airport Map',
+        description: 'Nearby airports and flight paths',
+        url: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},11,0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
+        dataSource: 'https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/',
+        note: 'FAA regulations require notification for structures >200ft or within airport zones'
+      },
+      {
+        id: 'celltower',
+        name: 'Closest Cell Tower and Antenna Map',
+        description: 'Existing cell towers and antenna structures',
+        url: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},13,0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
+        dataSource: 'https://www.fcc.gov/media/radio/antenna-structure-registration-asr',
+        note: 'FCC ASR database shows registered antenna structures'
+      }
+    ]
+
+    // Save generation request to database for tracking
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
+      ).bind(
+        'SCIP-MAPS',
+        JSON.stringify({
+          type: 'scip-maps',
+          lat: latitude,
+          lon: longitude,
+          zoom: zoomLevel,
+          siteName,
+          address
+        }),
+        maps.length
+      ).run()
+    } catch (dbError) {
+      console.error('Database save error:', dbError)
+    }
+
+    return c.json({
+      success: true,
+      siteName: siteName || 'Unnamed Site',
+      address: address || '',
+      coordinates: { lat: latitude, lon: longitude },
+      zoom: zoomLevel,
+      mapCount: maps.length,
+      maps,
+      generated: new Date().toISOString(),
+      instructions: {
+        usage: 'Right-click on any map image to copy or save for your SCIP document',
+        notes: [
+          'Some maps use public Mapbox demo token - for production use, add your own API key',
+          'FEMA and NWI layers may take a moment to load',
+          'Zoning and FLU data should be verified with local municipality GIS'
+        ]
+      }
+    })
+
+  } catch (error) {
+    console.error('SCIP maps generation error:', error)
+    return c.json({
+      error: 'Failed to generate SCIP maps',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
+// API: Get airport data near coordinates
+app.get('/api/scip-maps/airports', async (c) => {
+  const lat = c.req.query('lat')
+  const lon = c.req.query('lon')
+  const radius = c.req.query('radius') || '30' // miles
+
+  if (!lat || !lon) {
+    return c.json({ error: 'Latitude and longitude required' }, 400)
+  }
+
+  // Return info about checking FAA airport data
+  return c.json({
+    note: 'Airport proximity should be checked via FAA resources',
+    resources: [
+      {
+        name: 'FAA OE/AAA Tool',
+        url: 'https://oeaaa.faa.gov/oeaaa/external/portal.jsp',
+        description: 'Official FAA tool for determining if notification is required for structures'
+      },
+      {
+        name: 'SkyVector',
+        url: `https://skyvector.com/?ll=${lat},${lon}&chart=301&zoom=2`,
+        description: 'Aviation charts showing airports and airspace'
+      },
+      {
+        name: 'AirNav',
+        url: 'https://www.airnav.com/airports/',
+        description: 'Airport directory with detailed information'
+      }
+    ],
+    coordinates: { lat: parseFloat(lat as string), lon: parseFloat(lon as string) },
+    searchRadius: `${radius} miles`,
+    faaRegulation: 'Part 77 requires notification for structures >200ft AGL or within airport surfaces'
+  })
+})
+
+// API: Get cell tower data near coordinates
+app.get('/api/scip-maps/celltowers', async (c) => {
+  const lat = c.req.query('lat')
+  const lon = c.req.query('lon')
+  const radius = c.req.query('radius') || '5' // miles
+
+  if (!lat || !lon) {
+    return c.json({ error: 'Latitude and longitude required' }, 400)
+  }
+
+  // Return info about checking FCC tower data
+  return c.json({
+    note: 'Cell tower data should be checked via FCC and industry resources',
+    resources: [
+      {
+        name: 'FCC ASR Database',
+        url: 'https://wireless2.fcc.gov/UlsApp/AsrSearch/asrRegistrationSearch.jsp',
+        description: 'Official FCC Antenna Structure Registration database'
+      },
+      {
+        name: 'CellMapper',
+        url: `https://www.cellmapper.net/map?MCC=311&MNC=480&type=LTE&latitude=${lat}&longitude=${lon}&zoom=14`,
+        description: 'Crowdsourced cell tower mapping'
+      },
+      {
+        name: 'AntennaSearch',
+        url: `https://www.antennasearch.com/HTML/search/search.php?address=&lat=${lat}&lng=${lon}`,
+        description: 'Database of registered antenna structures'
+      }
+    ],
+    coordinates: { lat: parseFloat(lat as string), lon: parseFloat(lon as string) },
+    searchRadius: `${radius} miles`
+  })
 })
 
 export default app

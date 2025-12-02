@@ -1,6 +1,7 @@
 // MapDog - Site Acquisition Parcel Search Frontend
 let currentResults = []
-let currentMode = 'county' // 'county' or 'bulk'
+let currentMode = 'county' // 'county', 'coordinate', 'bulk', or 'scip'
+let currentScipMaps = null // Store generated SCIP maps
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,24 +16,28 @@ document.addEventListener('DOMContentLoaded', () => {
 // Switch between search modes
 function switchMode(mode) {
   currentMode = mode
-  
+
   const countySection = document.getElementById('countyInput').parentElement.parentElement
   const coordinateSection = document.getElementById('coordinateSearchSection')
   const bulkSection = document.getElementById('bulkSearchSection')
+  const scipSection = document.getElementById('scipMapsSection')
   const countyBtn = document.getElementById('countyModeBtn')
   const coordinateBtn = document.getElementById('coordinateModeBtn')
   const bulkBtn = document.getElementById('bulkModeBtn')
-  
+  const scipBtn = document.getElementById('scipModeBtn')
+
   // Hide all sections
   countySection.classList.add('hidden')
   coordinateSection.classList.add('hidden')
   bulkSection.classList.add('hidden')
-  
+  scipSection.classList.add('hidden')
+
   // Reset button styles
   countyBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
   coordinateBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
   bulkBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
-  
+  scipBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
+
   // Show selected section and highlight button
   if (mode === 'county') {
     countySection.classList.remove('hidden')
@@ -43,8 +48,11 @@ function switchMode(mode) {
   } else if (mode === 'bulk') {
     bulkSection.classList.remove('hidden')
     bulkBtn.className = 'px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg transition-all'
+  } else if (mode === 'scip') {
+    scipSection.classList.remove('hidden')
+    scipBtn.className = 'px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg transition-all'
   }
-  
+
   // Clear results when switching
   document.getElementById('results').innerHTML = ''
 }
@@ -830,10 +838,10 @@ function showLoading(show, message = 'Fetching parcels...') {
 // Show error message
 function showError(message) {
   const resultsDiv = document.getElementById('results')
-  
+
   // Parse message for better display
   const lines = message.split('\n').filter(line => line.trim())
-  
+
   resultsDiv.innerHTML = `
     <div class="bg-red-100 border-2 border-red-400 rounded-lg p-6 text-center">
       <i class="fas fa-exclamation-triangle text-red-600 text-4xl mb-3"></i>
@@ -843,12 +851,478 @@ function showError(message) {
         }
         return `<p class="text-red-800 font-semibold ${i > 0 ? 'mt-2' : ''}">${line}</p>`
       }).join('')}
-      <button 
-        onclick="document.getElementById('results').innerHTML=''" 
+      <button
+        onclick="document.getElementById('results').innerHTML=''"
         class="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
       >
         Dismiss
       </button>
     </div>
   `
+}
+
+// =====================================================
+// SCIP MAPS FUNCTIONS
+// =====================================================
+
+// Generate all SCIP maps for a site location
+async function generateScipMaps() {
+  const lat = document.getElementById('scipLat').value.trim()
+  const lon = document.getElementById('scipLon').value.trim()
+  const zoom = document.getElementById('scipZoom').value
+  const siteName = document.getElementById('scipSiteName').value.trim()
+  const address = document.getElementById('scipAddress').value.trim()
+
+  // Validate inputs
+  if (!lat || !lon) {
+    alert('Please enter latitude and longitude coordinates')
+    return
+  }
+
+  const latitude = parseFloat(lat)
+  const longitude = parseFloat(lon)
+
+  if (isNaN(latitude) || isNaN(longitude)) {
+    alert('Invalid coordinates. Please enter valid numbers.')
+    return
+  }
+
+  if (latitude < -90 || latitude > 90) {
+    alert('Latitude must be between -90 and 90')
+    return
+  }
+
+  if (longitude < -180 || longitude > 180) {
+    alert('Longitude must be between -180 and 180')
+    return
+  }
+
+  showLoading(true, 'Generating SCIP maps...')
+
+  try {
+    const response = await fetch('/api/scip-maps/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lat,
+        lon,
+        zoom,
+        siteName,
+        address
+      })
+    })
+
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error + (data.hint ? '\n\n' + data.hint : ''))
+    }
+
+    currentScipMaps = data
+    displayScipMaps(data)
+    loadStats()
+
+  } catch (error) {
+    showError(error.message)
+  } finally {
+    showLoading(false)
+  }
+}
+
+// Display generated SCIP maps
+function displayScipMaps(data) {
+  const resultsDiv = document.getElementById('results')
+  const maps = data.maps || []
+
+  if (maps.length === 0) {
+    resultsDiv.innerHTML = `
+      <div class="text-center py-8 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+        <i class="fas fa-exclamation-triangle text-yellow-600 text-4xl mb-3"></i>
+        <p class="text-lg font-semibold text-gray-800">No maps generated</p>
+      </div>
+    `
+    return
+  }
+
+  resultsDiv.innerHTML = `
+    <div class="mb-6 p-4 bg-teal-50 border-2 border-teal-300 rounded-lg">
+      <div class="flex justify-between items-start">
+        <div>
+          <h3 class="text-2xl font-bold text-gray-800">
+            <i class="fas fa-file-image text-teal-600 mr-2"></i>
+            SCIP Maps Generated
+          </h3>
+          ${data.siteName ? `<p class="text-lg font-semibold text-teal-700 mt-1">${data.siteName}</p>` : ''}
+          ${data.address ? `<p class="text-sm text-gray-600">${data.address}</p>` : ''}
+          <div class="grid grid-cols-2 gap-3 mt-3 text-sm">
+            <div><span class="font-semibold">Coordinates:</span> ${data.coordinates.lat}, ${data.coordinates.lon}</div>
+            <div><span class="font-semibold">Maps:</span> ${data.mapCount} generated</div>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button
+            onclick="downloadAllMaps()"
+            class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all"
+            title="Download all maps"
+          >
+            <i class="fas fa-download mr-2"></i>Download All
+          </button>
+          <button
+            onclick="printScipMaps()"
+            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all"
+            title="Print maps"
+          >
+            <i class="fas fa-print mr-2"></i>Print
+          </button>
+        </div>
+      </div>
+      <p class="text-xs text-gray-500 mt-3 bg-white p-2 rounded">
+        <i class="fas fa-info-circle mr-1"></i>
+        ${data.instructions?.usage || 'Right-click on any map to copy or save'}
+      </p>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4" id="scipMapsGrid">
+      ${maps.map((map, index) => renderScipMapCard(map, index)).join('')}
+    </div>
+
+    <div class="mt-6 p-4 bg-yellow-50 border border-yellow-300 rounded-lg">
+      <h4 class="font-bold text-gray-800 mb-2">
+        <i class="fas fa-lightbulb text-yellow-600 mr-2"></i>
+        Important Notes
+      </h4>
+      <ul class="text-sm text-gray-600 space-y-1">
+        ${(data.instructions?.notes || []).map(note => `<li>• ${note}</li>`).join('')}
+        <li>• Click any map image to view full size, then right-click to copy or save</li>
+        <li>• For best quality, use "Download All" to get high-resolution versions</li>
+      </ul>
+    </div>
+  `
+
+  // Load images after rendering
+  setTimeout(() => {
+    maps.forEach((map, index) => {
+      loadMapImage(map, index)
+    })
+  }, 100)
+}
+
+// Render individual SCIP map card
+function renderScipMapCard(map, index) {
+  return `
+    <div class="bg-white border-2 border-gray-200 rounded-lg overflow-hidden hover:border-teal-400 transition-all" id="map-card-${index}">
+      <div class="p-3 bg-gray-50 border-b">
+        <h4 class="font-bold text-gray-800">
+          <span class="inline-block w-6 h-6 bg-teal-600 text-white text-center rounded-full text-sm mr-2">${index + 1}</span>
+          ${map.name}
+        </h4>
+        <p class="text-xs text-gray-500 mt-1">${map.description}</p>
+      </div>
+      <div class="relative" style="min-height: 300px;">
+        <div id="map-loading-${index}" class="absolute inset-0 flex items-center justify-center bg-gray-100">
+          <div class="text-center">
+            <i class="fas fa-spinner fa-spin text-3xl text-teal-600"></i>
+            <p class="text-sm text-gray-500 mt-2">Loading map...</p>
+          </div>
+        </div>
+        <img
+          id="map-img-${index}"
+          class="w-full h-auto cursor-pointer hidden"
+          onclick="openMapFullscreen(${index})"
+          alt="${map.name}"
+          title="Click to view full size"
+        />
+        <div id="map-error-${index}" class="hidden absolute inset-0 flex items-center justify-center bg-red-50">
+          <div class="text-center p-4">
+            <i class="fas fa-exclamation-circle text-red-500 text-3xl"></i>
+            <p class="text-sm text-red-600 mt-2">Failed to load map</p>
+            <button onclick="retryMapLoad(${index})" class="mt-2 px-3 py-1 bg-red-600 text-white rounded text-sm">
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+      ${map.note ? `
+        <div class="p-2 bg-yellow-50 border-t text-xs text-gray-600">
+          <i class="fas fa-info-circle text-yellow-600 mr-1"></i>
+          ${map.note}
+        </div>
+      ` : ''}
+      <div class="p-2 border-t flex gap-2">
+        <button
+          onclick="copyMapImage(${index})"
+          class="flex-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition-all"
+        >
+          <i class="fas fa-copy mr-1"></i>Copy
+        </button>
+        <button
+          onclick="downloadMapImage(${index})"
+          class="flex-1 px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition-all"
+        >
+          <i class="fas fa-download mr-1"></i>Save
+        </button>
+        <a
+          href="${map.url}"
+          target="_blank"
+          class="flex-1 px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded text-sm transition-all text-center"
+        >
+          <i class="fas fa-external-link-alt mr-1"></i>Open
+        </a>
+      </div>
+    </div>
+  `
+}
+
+// Load map image with error handling
+function loadMapImage(map, index) {
+  const img = document.getElementById(`map-img-${index}`)
+  const loading = document.getElementById(`map-loading-${index}`)
+  const error = document.getElementById(`map-error-${index}`)
+
+  img.onload = function() {
+    loading.classList.add('hidden')
+    img.classList.remove('hidden')
+    error.classList.add('hidden')
+  }
+
+  img.onerror = function() {
+    // Try fallback URL if available
+    if (map.fallbackUrl && !img.dataset.triedFallback) {
+      img.dataset.triedFallback = 'true'
+      img.src = map.fallbackUrl
+    } else {
+      loading.classList.add('hidden')
+      error.classList.remove('hidden')
+    }
+  }
+
+  img.src = map.url
+}
+
+// Retry loading a failed map
+function retryMapLoad(index) {
+  if (!currentScipMaps || !currentScipMaps.maps[index]) return
+
+  const map = currentScipMaps.maps[index]
+  const img = document.getElementById(`map-img-${index}`)
+  const loading = document.getElementById(`map-loading-${index}`)
+  const error = document.getElementById(`map-error-${index}`)
+
+  // Reset state
+  img.classList.add('hidden')
+  error.classList.add('hidden')
+  loading.classList.remove('hidden')
+  delete img.dataset.triedFallback
+
+  // Retry load
+  loadMapImage(map, index)
+}
+
+// Open map in fullscreen modal
+function openMapFullscreen(index) {
+  if (!currentScipMaps || !currentScipMaps.maps[index]) return
+
+  const map = currentScipMaps.maps[index]
+  const img = document.getElementById(`map-img-${index}`)
+
+  // Create fullscreen modal
+  const modal = document.createElement('div')
+  modal.id = 'map-fullscreen-modal'
+  modal.className = 'fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4'
+  modal.onclick = function(e) {
+    if (e.target === modal) modal.remove()
+  }
+
+  modal.innerHTML = `
+    <div class="relative max-w-full max-h-full">
+      <button
+        onclick="document.getElementById('map-fullscreen-modal').remove()"
+        class="absolute -top-10 right-0 text-white text-2xl hover:text-gray-300"
+      >
+        <i class="fas fa-times"></i>
+      </button>
+      <div class="bg-white rounded-lg overflow-hidden shadow-2xl">
+        <div class="p-3 bg-teal-600 text-white">
+          <h3 class="font-bold">${map.name}</h3>
+          <p class="text-sm opacity-90">${map.description}</p>
+        </div>
+        <img src="${img.src}" class="max-w-full max-h-[80vh]" alt="${map.name}" />
+        <div class="p-3 bg-gray-100 flex gap-2 justify-center">
+          <button
+            onclick="copyMapImage(${index}); document.getElementById('map-fullscreen-modal').remove()"
+            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
+          >
+            <i class="fas fa-copy mr-2"></i>Copy to Clipboard
+          </button>
+          <button
+            onclick="downloadMapImage(${index}); document.getElementById('map-fullscreen-modal').remove()"
+            class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded"
+          >
+            <i class="fas fa-download mr-2"></i>Download
+          </button>
+        </div>
+      </div>
+    </div>
+  `
+
+  document.body.appendChild(modal)
+}
+
+// Copy map image to clipboard
+async function copyMapImage(index) {
+  const img = document.getElementById(`map-img-${index}`)
+  if (!img || !img.src) {
+    alert('Map image not loaded yet')
+    return
+  }
+
+  try {
+    // Create canvas to get image data
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    canvas.width = img.naturalWidth
+    canvas.height = img.naturalHeight
+    ctx.drawImage(img, 0, 0)
+
+    // Convert to blob and copy
+    canvas.toBlob(async (blob) => {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': blob })
+        ])
+        alert('Map image copied to clipboard!')
+      } catch (err) {
+        // Fallback - open in new tab
+        alert('Copy not supported in this browser. Opening image in new tab instead.')
+        window.open(img.src, '_blank')
+      }
+    }, 'image/png')
+  } catch (error) {
+    alert('Failed to copy image: ' + error.message)
+  }
+}
+
+// Download individual map image
+function downloadMapImage(index) {
+  if (!currentScipMaps || !currentScipMaps.maps[index]) return
+
+  const map = currentScipMaps.maps[index]
+  const img = document.getElementById(`map-img-${index}`)
+  const siteName = currentScipMaps.siteName || 'Site'
+
+  // Create filename
+  const filename = `${siteName.replace(/[^a-z0-9]/gi, '_')}_${map.id}_map.png`
+
+  // Try to download directly
+  const link = document.createElement('a')
+  link.href = img.src
+  link.download = filename
+  link.target = '_blank'
+
+  // For cross-origin images, open in new tab instead
+  if (img.src.includes('mapbox.com') || img.src.includes('fema.gov')) {
+    window.open(img.src, '_blank')
+    alert(`Image opened in new tab. Right-click and "Save image as..." to download as: ${filename}`)
+  } else {
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+}
+
+// Download all maps
+async function downloadAllMaps() {
+  if (!currentScipMaps || !currentScipMaps.maps) {
+    alert('No maps to download')
+    return
+  }
+
+  const siteName = currentScipMaps.siteName || 'Site'
+
+  alert(`Opening all ${currentScipMaps.maps.length} maps in new tabs.\n\nRight-click each image and "Save image as..." to download.\n\nFilename suggestion: ${siteName}_[map_type]_map.png`)
+
+  // Open each map in a new tab
+  currentScipMaps.maps.forEach((map, index) => {
+    setTimeout(() => {
+      window.open(map.url, '_blank')
+    }, index * 500) // Stagger to avoid popup blocker
+  })
+}
+
+// Print SCIP maps
+function printScipMaps() {
+  if (!currentScipMaps) {
+    alert('No maps to print')
+    return
+  }
+
+  // Create print-friendly HTML
+  const printWindow = window.open('', '_blank')
+  const siteName = currentScipMaps.siteName || 'Site'
+  const address = currentScipMaps.address || ''
+  const coords = currentScipMaps.coordinates
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>SCIP Maps - ${siteName}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #0d9488; border-bottom: 2px solid #0d9488; padding-bottom: 10px; }
+        .site-info { margin-bottom: 20px; color: #666; }
+        .map-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .map-card { border: 1px solid #ddd; break-inside: avoid; margin-bottom: 20px; }
+        .map-header { background: #f5f5f5; padding: 10px; border-bottom: 1px solid #ddd; }
+        .map-header h3 { margin: 0 0 5px 0; color: #333; }
+        .map-header p { margin: 0; font-size: 12px; color: #666; }
+        .map-img { width: 100%; height: auto; }
+        .map-note { padding: 5px 10px; background: #fef3c7; font-size: 11px; color: #666; }
+        @media print {
+          .map-card { page-break-inside: avoid; }
+        }
+      </style>
+    </head>
+    <body>
+      <h1>SCIP Maps - ${siteName}</h1>
+      <div class="site-info">
+        ${address ? `<p><strong>Address:</strong> ${address}</p>` : ''}
+        <p><strong>Coordinates:</strong> ${coords.lat}, ${coords.lon}</p>
+        <p><strong>Generated:</strong> ${new Date(currentScipMaps.generated).toLocaleString()}</p>
+      </div>
+      <div class="map-grid">
+        ${currentScipMaps.maps.map((map, i) => `
+          <div class="map-card">
+            <div class="map-header">
+              <h3>${i + 1}. ${map.name}</h3>
+              <p>${map.description}</p>
+            </div>
+            <img class="map-img" src="${map.url}" alt="${map.name}" />
+            ${map.note ? `<div class="map-note">${map.note}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </body>
+    </html>
+  `)
+
+  printWindow.document.close()
+
+  // Wait for images to load then print
+  printWindow.onload = function() {
+    setTimeout(() => {
+      printWindow.print()
+    }, 2000)
+  }
+}
+
+// Clear SCIP maps form
+function clearScipMaps() {
+  document.getElementById('scipLat').value = ''
+  document.getElementById('scipLon').value = ''
+  document.getElementById('scipZoom').value = '15'
+  document.getElementById('scipSiteName').value = ''
+  document.getElementById('scipAddress').value = ''
+  document.getElementById('results').innerHTML = ''
+  currentScipMaps = null
 }
