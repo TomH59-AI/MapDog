@@ -805,6 +805,13 @@ app.post('/api/scip-maps/generate', async (c) => {
       return c.json({ error: 'Longitude must be between -180 and 180' }, 400)
     }
 
+    // API Keys for high-quality map services
+    const MAPBOX_API_KEY = 'pk.eyI1IjoidG9taG9sbGFuZDU5IiwiYSI6ImNtNG9iYWJnbzAycTd5cG15dHRqZENEZ3cifQ.AlzaSyBZyS6oMANyDrZZZE6Hr1Aeuj6Z1P1k7EE'
+    const ESRI_API_KEY = 'AAPTxy8BH1VEsoebNVZXo8HurDfuy7_uzXxzsBVSTXAEc0GMZMhjogZoHyrU0daXIKm1zEGuhgDF_XwoBMAVmBgSt6oOAmuE2WK0ksy3ct3gA3gY-K_2BiLNQVnjV10sdpzuyKEC4wpUMhbwM2Q6W4mDL_AlCxFr33JG5lsCeP5kJ8ajsoJNUqheePSnf3bb6V3MS71PwAsYTm3zaMVApSjEok9LPGIeKLQdG9pcgqLYR1Y.AT1_nd4vHWnB'
+    const USGS_TOKEN = 'AWf1yj@7CBsyEyIXFArYdJlq8MrrWGhc5mgD_ful_r1tKi@mWCIZB0AALa0R6ufs'
+    const OPENCELLID_TOKEN = 'pk.6d4e560229de9121955a48aa246647b2'
+    const NREL_API_KEY = 'syaFGtK6UHbc9IwiFsnWjoWjoDm4t2pd466Bfzpu'
+
     // Map dimensions for high-quality output
     const width = 800
     const height = 600
@@ -812,44 +819,50 @@ app.post('/api/scip-maps/generate', async (c) => {
     // Calculate bounding box for the area (approximately 0.5 mile radius)
     const delta = 0.008 // roughly 0.5 miles
     const bbox = `${longitude - delta},${latitude - delta},${longitude + delta},${latitude + delta}`
+    const bboxUSGS = `${longitude - delta},${latitude - delta},${longitude + delta},${latitude + delta}`
 
-    // Generate URLs for all 10 SCIP map types using free public services
+    // Generate URLs for all 10 SCIP map types using premium API services
     const maps = [
       {
         id: 'aerial',
         name: 'Aerial Map',
-        description: 'Satellite/aerial imagery of the site',
-        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
-        note: 'ESRI World Imagery - high resolution satellite view'
+        description: 'High-resolution satellite/aerial imagery of the site',
+        url: `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},${zoomLevel},0/${width}x${height}@2x?access_token=${MAPBOX_API_KEY}`,
+        fallbackUrl: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image&token=${ESRI_API_KEY}`,
+        note: 'Mapbox Satellite imagery with site marker'
       },
       {
         id: 'topography',
         name: 'Topography Map',
-        description: 'Terrain and elevation contours',
-        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
-        note: 'ESRI World Topographic Map with terrain features'
+        description: 'USGS terrain and elevation contours',
+        url: `https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/export?bbox=${bboxUSGS}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png32&f=image`,
+        fallbackUrl: `https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},${zoomLevel},0/${width}x${height}@2x?access_token=${MAPBOX_API_KEY}`,
+        note: 'USGS National Map - official topographic data'
       },
       {
         id: 'floodplain',
         name: 'Floodplain Map',
-        description: 'FEMA flood zones and hazard areas',
+        description: 'FEMA National Flood Hazard Layer zones',
         url: `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png32&transparent=false&layers=show:28&f=image`,
+        fallbackUrl: `https://basemap.nationalmap.gov/arcgis/rest/services/USGSHydroCached/MapServer/export?bbox=${bboxUSGS}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png32&f=image`,
         wmsUrl: 'https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer',
-        note: 'FEMA National Flood Hazard Layer - official flood zone data'
+        note: 'FEMA NFHL - official flood zone designations (Zone A, AE, X, etc.)'
       },
       {
         id: 'zoning',
         name: 'Zoning Map',
         description: 'Local zoning districts and classifications',
-        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
-        note: 'Base map - zoning data varies by municipality, check local GIS portal'
+        url: `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},${zoomLevel},0/${width}x${height}@2x?access_token=${MAPBOX_API_KEY}`,
+        fallbackUrl: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
+        note: 'Base map with site marker - verify zoning at local municipality GIS portal'
       },
       {
         id: 'flu',
         name: 'FLU Map (Future Land Use)',
         description: 'Future land use planning designations',
-        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
-        note: 'Base map - FLU data varies by municipality, check local comprehensive plan'
+        url: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+0066ff(${longitude},${latitude})/${longitude},${latitude},${zoomLevel},0/${width}x${height}@2x?access_token=${MAPBOX_API_KEY}`,
+        fallbackUrl: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
+        note: 'Base map with site marker - verify FLU at local comprehensive plan'
       },
       {
         id: 'wetlands',
@@ -857,38 +870,43 @@ app.post('/api/scip-maps/generate', async (c) => {
         description: 'National Wetlands Inventory (NWI) data',
         url: `https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png32&transparent=false&f=image`,
         wmsUrl: 'https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer',
-        note: 'US Fish & Wildlife Service National Wetlands Inventory'
+        note: 'US Fish & Wildlife Service NWI - official wetlands delineation'
       },
       {
         id: 'parcel',
         name: 'Parcel Map',
         description: 'Property boundaries and parcel lines',
-        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${longitude - 0.004},${latitude - 0.003},${longitude + 0.004},${latitude + 0.003}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
-        note: 'Zoomed street view - parcel boundaries via county property appraiser GIS'
+        url: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},${zoomLevel + 1},0/${width}x${height}@2x?access_token=${MAPBOX_API_KEY}`,
+        fallbackUrl: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${longitude - 0.004},${latitude - 0.003},${longitude + 0.004},${latitude + 0.003}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
+        note: 'Detailed street view - parcel data available via county property appraiser'
       },
       {
         id: 'windspeed',
         name: 'Wind Speed Map',
-        description: 'Average wind speeds for the area',
-        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${longitude - 0.05},${latitude - 0.04},${longitude + 0.05},${latitude + 0.04}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
-        dataSource: 'https://windexchange.energy.gov/maps-data',
-        note: 'Regional view - wind data from NREL, typical speeds 5-15 mph in Florida'
+        description: 'NREL wind resource data for the area',
+        url: `https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/static/pin-l+00cc00(${longitude},${latitude})/${longitude},${latitude},10,0/${width}x${height}@2x?access_token=${MAPBOX_API_KEY}`,
+        dataSource: `https://developer.nrel.gov/api/wind-toolkit/v2/wind/wtk-srw-download?api_key=${NREL_API_KEY}&lat=${latitude}&lon=${longitude}`,
+        nrelApiUrl: `https://developer.nrel.gov/api/wind-toolkit/v2/wind/wtk-srw-download?api_key=${NREL_API_KEY}&lat=${latitude}&lon=${longitude}&year=2012`,
+        note: 'Regional wind view - NREL Wind Toolkit data available for detailed analysis'
       },
       {
         id: 'airport',
         name: 'Closest Airport Map',
-        description: 'Nearby airports and flight paths',
-        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${longitude - 0.1},${latitude - 0.08},${longitude + 0.1},${latitude + 0.08}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
+        description: 'Nearby airports and airspace considerations',
+        url: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+ff6600(${longitude},${latitude})/${longitude},${latitude},11,0/${width}x${height}@2x?access_token=${MAPBOX_API_KEY}`,
+        fallbackUrl: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${longitude - 0.1},${latitude - 0.08},${longitude + 0.1},${latitude + 0.08}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
         dataSource: 'https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/',
-        note: 'Wide area view - FAA requires notification for structures >200ft or within airport zones'
+        note: 'Wide area view - FAA Part 77 notification required for structures >200ft AGL'
       },
       {
         id: 'celltower',
         name: 'Closest Cell Tower and Antenna Map',
-        description: 'Existing cell towers and antenna structures',
-        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${longitude - 0.02},${latitude - 0.015},${longitude + 0.02},${latitude + 0.015}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
+        description: 'Existing cell towers and antenna structures nearby',
+        url: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+cc0000(${longitude},${latitude})/${longitude},${latitude},14,0/${width}x${height}@2x?access_token=${MAPBOX_API_KEY}`,
+        fallbackUrl: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${longitude - 0.02},${latitude - 0.015},${longitude + 0.02},${latitude + 0.015}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
+        openCellIdUrl: `https://opencellid.org/ajax/searchCell.php?key=${OPENCELLID_TOKEN}&lat=${latitude}&lon=${longitude}&format=json`,
         dataSource: 'https://www.fcc.gov/media/radio/antenna-structure-registration-asr',
-        note: 'Area view - check FCC ASR database for registered antenna structures'
+        note: 'Area view - check FCC ASR and OpenCellID for registered towers'
       }
     ]
 
@@ -924,9 +942,10 @@ app.post('/api/scip-maps/generate', async (c) => {
       instructions: {
         usage: 'Right-click on any map image to copy or save for your SCIP document',
         notes: [
-          'Some maps use public Mapbox demo token - for production use, add your own API key',
-          'FEMA and NWI layers may take a moment to load',
-          'Zoning and FLU data should be verified with local municipality GIS'
+          'Maps use premium Mapbox, USGS, and ESRI services for high quality',
+          'FEMA flood zones and NWI wetlands are official federal data sources',
+          'Zoning and FLU data should be verified with local municipality GIS',
+          'Wind data available via NREL API for detailed site analysis'
         ]
       }
     })
