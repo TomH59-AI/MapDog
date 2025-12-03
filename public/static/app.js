@@ -929,6 +929,7 @@ function displayScipResults(data) {
   const resultsDiv = document.getElementById('results')
   const site = data.site
   const maps = data.maps
+  const searchRing = site.searchRing || {}
 
   // Color mappings for Tailwind classes
   const colorMap = {
@@ -952,11 +953,18 @@ function displayScipResults(data) {
             <i class="fas fa-map-marked-alt text-emerald-600 mr-2"></i>
             SCIP Maps - ${site.name}
           </h3>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-sm">
+          <p class="text-sm text-red-600 font-semibold mt-1">
+            <i class="fas fa-bullseye mr-1"></i>Client: ${data.meta.client || 'Verizon'}
+          </p>
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3 text-sm">
             <div><span class="font-semibold">Coordinates:</span> ${site.coordinates.latitude.toFixed(6)}, ${site.coordinates.longitude.toFixed(6)}</div>
             <div><span class="font-semibold">DMS:</span> ${site.coordinates.dms.lat}</div>
+            <div><span class="font-semibold">DMS:</span> ${site.coordinates.dms.lon}</div>
             ${site.county ? `<div><span class="font-semibold">County:</span> ${site.county}</div>` : ''}
             ${site.address ? `<div><span class="font-semibold">Address:</span> ${site.address}</div>` : ''}
+            <div class="text-red-600 font-semibold">
+              <i class="fas fa-circle-notch mr-1"></i>Search Ring: ${searchRing.radiusMiles || 0.5} mi (${searchRing.radiusFeet || 2640} ft)
+            </div>
           </div>
           <p class="text-xs text-emerald-700 mt-2">
             <i class="fas fa-clock mr-1"></i>Generated: ${new Date(data.meta.generated).toLocaleString()}
@@ -981,9 +989,20 @@ function displayScipResults(data) {
       </div>
     </div>
 
+    <!-- Map Requirements Banner -->
+    <div class="mb-4 p-3 bg-red-50 border-2 border-red-300 rounded-lg">
+      <h4 class="font-bold text-red-800 mb-2">
+        <i class="fas fa-exclamation-triangle mr-2"></i>SCIP Map Requirements (Verizon Standard)
+      </h4>
+      <ul class="text-xs text-red-700 grid grid-cols-2 md:grid-cols-3 gap-1">
+        ${(data.meta.requirements || []).map(req => `<li><i class="fas fa-check mr-1"></i>${req}</li>`).join('')}
+      </ul>
+    </div>
+
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       ${maps.map(map => {
         const colors = colorMap[map.color] || colorMap['blue']
+        const hasLegend = map.legend && Object.keys(map.legend).length > 0
         return `
           <div class="${colors.bg} border-2 ${colors.border} rounded-lg p-4 hover:shadow-lg transition-all">
             <div class="flex items-start justify-between mb-3">
@@ -996,6 +1015,16 @@ function displayScipResults(data) {
               </div>
             </div>
 
+            <!-- Search Ring Info -->
+            ${map.searchRing ? `
+              <div class="text-xs bg-red-100 text-red-700 p-2 rounded mb-3">
+                <i class="fas fa-crosshairs mr-1"></i>
+                <span class="font-semibold">Search Ring:</span>
+                ${map.searchRing.radiusMiles} mi (${map.searchRing.radiusFeet} ft) radius |
+                <span class="text-red-800">Red waypoint at center</span>
+              </div>
+            ` : ''}
+
             <div class="text-xs text-gray-500 mb-3">
               <i class="fas fa-database mr-1"></i>Source: ${map.source}
               ${map.requiresKey ? '<span class="ml-2 text-yellow-600"><i class="fas fa-key mr-1"></i>API Key Required</span>' : ''}
@@ -1005,6 +1034,23 @@ function displayScipResults(data) {
               <div class="text-xs text-yellow-700 bg-yellow-100 p-2 rounded mb-3">
                 <i class="fas fa-info-circle mr-1"></i>${map.note}
               </div>
+            ` : ''}
+
+            <!-- Legend/Key for color-coded maps -->
+            ${hasLegend ? `
+              <details class="mb-3">
+                <summary class="text-xs font-semibold text-gray-700 cursor-pointer hover:text-gray-900">
+                  <i class="fas fa-palette mr-1"></i>Legend / Map Key
+                </summary>
+                <div class="mt-2 p-2 bg-white rounded border text-xs">
+                  ${Object.entries(map.legend).map(([key, value]) => `
+                    <div class="flex justify-between py-1 border-b border-gray-100 last:border-0">
+                      <span class="font-semibold">${key}</span>
+                      <span class="text-gray-600">${value}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </details>
             ` : ''}
 
             <div class="flex flex-wrap gap-2">
@@ -1018,14 +1064,29 @@ function displayScipResults(data) {
                   <i class="fas fa-map mr-1"></i>Alt Viewer
                 </a>
               ` : ''}
-              ${map.searchUrl ? `
-                <a href="${map.searchUrl}" target="_blank" class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded transition-all">
-                  <i class="fas fa-search mr-1"></i>Search
-                </a>
-              ` : ''}
               ${map.esriUrl ? `
                 <a href="${map.esriUrl}" target="_blank" class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded transition-all">
                   <i class="fas fa-image mr-1"></i>Static Image
+                </a>
+              ` : ''}
+              ${map.caltopoUrl ? `
+                <a href="${map.caltopoUrl}" target="_blank" class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded transition-all">
+                  <i class="fas fa-mountain mr-1"></i>CalTopo
+                </a>
+              ` : ''}
+              ${map.regridUrl ? `
+                <a href="${map.regridUrl}" target="_blank" class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded transition-all">
+                  <i class="fas fa-vector-square mr-1"></i>Regrid
+                </a>
+              ` : ''}
+              ${map.faaUrl ? `
+                <a href="${map.faaUrl}" target="_blank" class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded transition-all">
+                  <i class="fas fa-plane mr-1"></i>FAA OE/AAA
+                </a>
+              ` : ''}
+              ${map.fccUrl ? `
+                <a href="${map.fccUrl}" target="_blank" class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded transition-all">
+                  <i class="fas fa-broadcast-tower mr-1"></i>FCC ASR
                 </a>
               ` : ''}
             </div>

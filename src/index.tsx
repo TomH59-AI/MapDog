@@ -780,7 +780,7 @@ app.get('/api/searches/history', async (c) => {
 // API: Generate SCIP Maps
 app.post('/api/scip/generate', async (c) => {
   try {
-    const { lat, lon, siteName, county, address, zoom = 17 } = await c.req.json()
+    const { lat, lon, siteName, county, address, zoom = 17, radiusMiles = 0.5 } = await c.req.json()
 
     // Validate inputs
     if (!lat || !lon) {
@@ -813,159 +813,314 @@ app.post('/api/scip/generate', async (c) => {
     const countyClean = county?.trim().toUpperCase() || ''
     const addressClean = address?.trim() || ''
     const zoomLevel = Math.min(Math.max(parseInt(zoom) || 17, 10), 20)
+    const searchRadius = parseFloat(radiusMiles) || 0.5
 
-    // Map dimensions for static maps
-    const mapWidth = 640
-    const mapHeight = 480
+    // Map dimensions for static maps (high resolution for Verizon quality)
+    const mapWidth = 1024
+    const mapHeight = 768
 
-    // Generate SCIP map configurations
-    // These use various free/public map services and authoritative data sources
+    // Calculate half-mile radius in degrees for bounding box
+    // 1 degree latitude ≈ 69 miles, 1 degree longitude varies by latitude
+    const latDegPerMile = 1 / 69.0
+    const lonDegPerMile = 1 / (69.0 * Math.cos(latitude * Math.PI / 180))
+    const radiusLatDeg = searchRadius * latDegPerMile
+    const radiusLonDeg = searchRadius * lonDegPerMile
+
+    // Calculate bounding box for half-mile radius
+    const bbox = {
+      minLon: longitude - radiusLonDeg,
+      minLat: latitude - radiusLatDeg,
+      maxLon: longitude + radiusLonDeg,
+      maxLat: latitude + radiusLatDeg
+    }
+
+    // Convert radius to feet and meters for display
+    const radiusFeet = Math.round(searchRadius * 5280)
+    const radiusMeters = Math.round(searchRadius * 1609.34)
+
+    // Generate professional SCIP map configurations for Verizon review
     const scipMaps = [
       {
         id: 'aerial',
         name: 'Aerial Map',
-        description: 'Satellite/aerial imagery showing site surroundings',
+        description: `High-resolution satellite imagery with ${searchRadius}-mile search ring radius centered on site coordinates. Red waypoint marker indicates proposed tower location.`,
         icon: 'fa-satellite',
         color: 'blue',
-        // Google Static Maps - satellite view
-        staticUrl: `https://maps.googleapis.com/maps/api/staticmap?center=${latitude},${longitude}&zoom=${zoomLevel}&size=${mapWidth}x${mapHeight}&maptype=satellite&markers=color:red%7C${latitude},${longitude}`,
-        // Fallback to OpenStreetMap tiles
-        fallbackUrl: `https://tile.openstreetmap.org/${zoomLevel}/${Math.floor((longitude + 180) / 360 * Math.pow(2, zoomLevel))}/${Math.floor((1 - Math.log(Math.tan(latitude * Math.PI / 180) + 1 / Math.cos(latitude * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoomLevel))}.png`,
-        // Interactive viewer URL
-        viewerUrl: `https://www.google.com/maps/@${latitude},${longitude},${zoomLevel}z/data=!3m1!1e1!4m5!3m4`,
-        source: 'Google Maps Satellite',
-        requiresKey: true
+        // Google Earth Web with coordinates
+        viewerUrl: `https://earth.google.com/web/@${latitude},${longitude},100a,${radiusFeet * 2}d,35y,0h,0t,0r`,
+        // ArcGIS World Imagery with marker
+        altViewerUrl: `https://www.arcgis.com/home/webmap/viewer.html?center=${longitude},${latitude}&level=${zoomLevel}&basemapUrl=https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer`,
+        // ESRI World Imagery export with bounding box
+        esriUrl: `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox.minLon},${bbox.minLat},${bbox.maxLon},${bbox.maxLat}&bboxSR=4326&imageSR=4326&size=${mapWidth},${mapHeight}&format=png&f=image`,
+        source: 'ESRI World Imagery / Google Earth',
+        requiresKey: false,
+        searchRing: {
+          centerLat: latitude,
+          centerLon: longitude,
+          radiusMiles: searchRadius,
+          radiusFeet: radiusFeet,
+          color: 'red'
+        }
       },
       {
         id: 'topography',
         name: 'Topography Map',
-        description: 'Terrain and elevation map showing contours',
+        description: `USGS topographic map showing contour lines with elevation in feet above Mean Sea Level (AMSL). ${searchRadius}-mile search ring radius displayed.`,
         icon: 'fa-mountain',
         color: 'green',
-        staticUrl: `https://maps.googleapis.com/maps/api/staticmap?center=${latitude},${longitude}&zoom=${zoomLevel}&size=${mapWidth}x${mapHeight}&maptype=terrain&markers=color:red%7C${latitude},${longitude}`,
-        viewerUrl: `https://www.google.com/maps/@${latitude},${longitude},${zoomLevel}z/data=!5m1!1e4`,
-        source: 'Google Maps Terrain',
-        requiresKey: true
+        // USGS National Map with topo
+        viewerUrl: `https://apps.nationalmap.gov/viewer/?ll=${latitude},${longitude}&z=${zoomLevel}`,
+        // USGS Topo Map Service
+        altViewerUrl: `https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/export?bbox=${bbox.minLon},${bbox.minLat},${bbox.maxLon},${bbox.maxLat}&bboxSR=4326&imageSR=4326&size=${mapWidth},${mapHeight}&format=png&f=image`,
+        // OpenTopoMap for contours
+        esriUrl: `https://opentopomap.org/#map=${zoomLevel}/${latitude}/${longitude}`,
+        // Caltopo for professional topo
+        caltopoUrl: `https://caltopo.com/map.html#ll=${latitude},${longitude}&z=${zoomLevel}&b=t`,
+        source: 'USGS National Map / OpenTopoMap',
+        requiresKey: false,
+        note: 'Contour interval typically 10-40 feet. Elevation shown in feet AMSL.',
+        searchRing: {
+          centerLat: latitude,
+          centerLon: longitude,
+          radiusMiles: searchRadius,
+          radiusFeet: radiusFeet,
+          color: 'red'
+        }
       },
       {
         id: 'floodplain',
-        name: 'Floodplain Map',
-        description: 'FEMA flood zone designations and flood hazard areas',
+        name: 'Floodplain Map (FEMA FIRMette)',
+        description: `Official FEMA Flood Insurance Rate Map (FIRM) showing flood zone designations. Use FIRMette tool to generate print-quality flood map for ${searchRadius}-mile radius.`,
         icon: 'fa-water',
         color: 'cyan',
+        // FEMA FIRMette Generator - direct link
+        viewerUrl: `https://msc.fema.gov/portal/availabilitySearch?latitude=${latitude}&longitude=${longitude}#searchresultsanchor`,
         // FEMA National Flood Hazard Layer viewer
-        viewerUrl: `https://msc.fema.gov/portal/search?AddressQuery=${latitude}%2C${longitude}#searchresultsanchor`,
-        // Alternative: Flood Map Service Center
-        altViewerUrl: `https://hazards-fema.maps.arcgis.com/apps/webappviewer/index.html?id=8b0adb51996444d4879338b5529aa9cd&extent=${longitude-0.01},${latitude-0.01},${longitude+0.01},${latitude+0.01},4326`,
-        // FEMA ArcGIS REST Service for embedding
-        esriUrl: `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/export?bbox=${longitude-0.005},${latitude-0.005},${longitude+0.005},${latitude+0.005}&bboxSR=4326&imageSR=4326&size=${mapWidth},${mapHeight}&format=png&f=image`,
-        source: 'FEMA National Flood Hazard Layer',
-        requiresKey: false
+        altViewerUrl: `https://hazards-fema.maps.arcgis.com/apps/webappviewer/index.html?id=8b0adb51996444d4879338b5529aa9cd&extent=${bbox.minLon},${bbox.minLat},${bbox.maxLon},${bbox.maxLat}`,
+        // FEMA NFHL REST Service for static image
+        esriUrl: `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/export?bbox=${bbox.minLon},${bbox.minLat},${bbox.maxLon},${bbox.maxLat}&bboxSR=4326&imageSR=4326&size=${mapWidth},${mapHeight}&format=png&f=image&layers=show:28`,
+        source: 'FEMA National Flood Hazard Layer (NFHL)',
+        requiresKey: false,
+        note: 'Generate FIRMette PDF for official flood zone determination. Zones: A, AE, AH, AO, V, VE, X (shaded/unshaded).',
+        legend: {
+          'Zone A/AE': 'High Risk - 1% annual flood chance (100-year)',
+          'Zone V/VE': 'High Risk Coastal - Wave action',
+          'Zone X (shaded)': 'Moderate Risk - 0.2% annual chance (500-year)',
+          'Zone X (unshaded)': 'Minimal Risk - Outside flood zones'
+        },
+        searchRing: {
+          centerLat: latitude,
+          centerLon: longitude,
+          radiusMiles: searchRadius,
+          radiusFeet: radiusFeet,
+          color: 'red'
+        }
       },
       {
         id: 'zoning',
         name: 'Zoning Map',
-        description: 'Local zoning district classifications',
+        description: `Local zoning district map with color-coded classifications. ${countyClean || 'County'} zoning ordinance applies. ${searchRadius}-mile search ring shown.`,
         icon: 'fa-city',
         color: 'purple',
-        // County-specific - we provide general guidance
+        // County-specific GIS portal search
         viewerUrl: countyClean
-          ? `https://www.google.com/search?q=${encodeURIComponent(countyClean)}+county+florida+zoning+map+GIS`
-          : `https://www.google.com/search?q=zoning+map+${latitude}+${longitude}`,
-        // Many counties use ArcGIS Online
-        altViewerUrl: `https://www.arcgis.com/home/webmap/viewer.html?center=${longitude},${latitude}&level=${zoomLevel}`,
-        source: 'County Zoning Authority',
+          ? `https://www.google.com/search?q=${encodeURIComponent(countyClean)}+county+florida+GIS+zoning+map+viewer`
+          : `https://www.arcgis.com/home/webmap/viewer.html?center=${longitude},${latitude}&level=${zoomLevel}`,
+        // ArcGIS Hub search for zoning
+        altViewerUrl: `https://hub.arcgis.com/search?q=zoning%20${encodeURIComponent(countyClean || '')}%20florida&collection=Dataset`,
+        source: `${countyClean || 'County'} Planning & Zoning Department`,
         requiresKey: false,
-        note: 'Zoning maps are county-specific. Check your local county GIS portal.'
+        note: 'Zoning maps are county-specific. Include color-coded legend showing: Residential (R-1, R-2, R-3), Commercial (C-1, C-2), Industrial (I-1, I-2), Agricultural (A), PUD, etc.',
+        legend: {
+          'Residential (Yellow)': 'R-1, R-2, R-3 - Single/Multi-family',
+          'Commercial (Red)': 'C-1, C-2, C-3 - Retail/Office/Heavy',
+          'Industrial (Purple)': 'I-1, I-2 - Light/Heavy Industrial',
+          'Agricultural (Green)': 'A, AG - Farm/Rural',
+          'PUD (Orange)': 'Planned Unit Development',
+          'Conservation (Dark Green)': 'Protected/Environmental'
+        },
+        searchRing: {
+          centerLat: latitude,
+          centerLon: longitude,
+          radiusMiles: searchRadius,
+          radiusFeet: radiusFeet,
+          color: 'red'
+        }
       },
       {
         id: 'flu',
         name: 'FLU Map (Future Land Use)',
-        description: 'Future Land Use designations from comprehensive plan',
+        description: `Future Land Use designations from ${countyClean || 'County'} Comprehensive Plan. Color-coded with ${searchRadius}-mile search ring.`,
         icon: 'fa-map',
         color: 'orange',
         viewerUrl: countyClean
-          ? `https://www.google.com/search?q=${encodeURIComponent(countyClean)}+county+florida+future+land+use+map`
+          ? `https://www.google.com/search?q=${encodeURIComponent(countyClean)}+county+florida+future+land+use+map+comprehensive+plan`
           : `https://www.google.com/search?q=future+land+use+map+${latitude}+${longitude}`,
-        source: 'County Planning Department',
+        altViewerUrl: `https://hub.arcgis.com/search?q=future%20land%20use%20${encodeURIComponent(countyClean || '')}%20florida`,
+        source: `${countyClean || 'County'} Planning Department / Comprehensive Plan`,
         requiresKey: false,
-        note: 'FLU maps are county-specific. Check local comprehensive plan.'
+        note: 'FLU maps show planned future development patterns. May differ from current zoning.',
+        legend: {
+          'Low Density Residential': '1-4 units/acre',
+          'Medium Density Residential': '5-12 units/acre',
+          'High Density Residential': '13+ units/acre',
+          'Commercial': 'Retail/Office/Mixed Use',
+          'Industrial': 'Manufacturing/Warehousing',
+          'Agricultural': 'Farm/Rural/Silviculture',
+          'Conservation': 'Wetlands/Environmental'
+        },
+        searchRing: {
+          centerLat: latitude,
+          centerLon: longitude,
+          radiusMiles: searchRadius,
+          radiusFeet: radiusFeet,
+          color: 'red'
+        }
       },
       {
         id: 'wetlands',
-        name: 'Wetlands Map',
-        description: 'National Wetlands Inventory (NWI) data',
+        name: 'Wetlands Map (NWI)',
+        description: `National Wetlands Inventory (NWI) showing wetland boundaries, types, and classifications within ${searchRadius}-mile radius. USGS/USFWS data.`,
         icon: 'fa-leaf',
         color: 'teal',
-        // USFWS National Wetlands Inventory
+        // USFWS Wetlands Mapper with coordinates
         viewerUrl: `https://fwsprimary.wim.usgs.gov/wetlands/apps/wetlands-mapper/?ll=${latitude},${longitude}&z=${zoomLevel}`,
-        // NWI ArcGIS Service for embedding
-        esriUrl: `https://www.fws.gov/wetlands/arcgis/rest/services/Wetlands/MapServer/export?bbox=${longitude-0.01},${latitude-0.01},${longitude+0.01},${latitude+0.01}&bboxSR=4326&imageSR=4326&size=${mapWidth},${mapHeight}&format=png&f=image`,
-        source: 'USFWS National Wetlands Inventory',
-        requiresKey: false
+        // NWI REST Service export
+        esriUrl: `https://www.fws.gov/wetlands/arcgis/rest/services/Wetlands/MapServer/export?bbox=${bbox.minLon},${bbox.minLat},${bbox.maxLon},${bbox.maxLat}&bboxSR=4326&imageSR=4326&size=${mapWidth},${mapHeight}&format=png&f=image&layers=show:0`,
+        // Alternative: USGS National Hydrography
+        altViewerUrl: `https://hydro.nationalmap.gov/arcgis/rest/services/NHDPlus_HR/MapServer/export?bbox=${bbox.minLon},${bbox.minLat},${bbox.maxLon},${bbox.maxLat}&bboxSR=4326&size=${mapWidth},${mapHeight}&format=png&f=image`,
+        source: 'USFWS National Wetlands Inventory / USGS NHD',
+        requiresKey: false,
+        note: 'Wetlands shown in blue/teal. Classification codes: PFO (Forested), PEM (Emergent), PSS (Scrub-Shrub), L (Lacustrine), R (Riverine).',
+        legend: {
+          'PFO (Dark Blue)': 'Palustrine Forested Wetland',
+          'PEM (Light Blue)': 'Palustrine Emergent Wetland',
+          'PSS (Blue-Green)': 'Palustrine Scrub-Shrub',
+          'L (Blue)': 'Lacustrine (Lake/Pond)',
+          'R (Blue Line)': 'Riverine (Stream/River)',
+          'E (Teal)': 'Estuarine (Coastal)'
+        },
+        searchRing: {
+          centerLat: latitude,
+          centerLon: longitude,
+          radiusMiles: searchRadius,
+          radiusFeet: radiusFeet,
+          color: 'red'
+        }
       },
       {
         id: 'parcel',
         name: 'Parcel Map',
-        description: 'Property parcel boundaries and ownership',
+        description: `Property parcel boundaries showing target parcel and surrounding parcels within ${searchRadius}-mile radius. Includes PIN, owner, and acreage data.`,
         icon: 'fa-vector-square',
         color: 'yellow',
+        // County Property Appraiser search
         viewerUrl: countyClean
-          ? `https://www.google.com/search?q=${encodeURIComponent(countyClean)}+county+florida+property+appraiser+parcel+map`
-          : `https://www.google.com/maps/@${latitude},${longitude},${zoomLevel}z`,
-        // MapWise parcel data available in county search
-        source: 'County Property Appraiser / MapWise',
+          ? `https://www.google.com/search?q=${encodeURIComponent(countyClean)}+county+florida+property+appraiser+GIS+map`
+          : `https://www.arcgis.com/home/webmap/viewer.html?center=${longitude},${latitude}&level=${zoomLevel}`,
+        // ArcGIS parcels search
+        altViewerUrl: `https://hub.arcgis.com/search?q=parcels%20${encodeURIComponent(countyClean || '')}%20florida`,
+        // Regrid (formerly Loveland) parcel data
+        regridUrl: `https://app.regrid.com/us/fl/${countyClean?.toLowerCase() || ''}#${zoomLevel}/${latitude}/${longitude}`,
+        source: `${countyClean || 'County'} Property Appraiser / Regrid`,
         requiresKey: false,
-        note: 'Use County Search mode to find parcels near this location.'
+        note: 'Use MapDog County Search to pull detailed parcel data for target and surrounding properties.',
+        parcelData: {
+          targetCoords: { lat: latitude, lon: longitude },
+          searchRadius: searchRadius,
+          requiredFields: ['PIN', 'Owner Name', 'Site Address', 'Acres', 'Zoning', 'Land Use', 'Market Value']
+        },
+        searchRing: {
+          centerLat: latitude,
+          centerLon: longitude,
+          radiusMiles: searchRadius,
+          radiusFeet: radiusFeet,
+          color: 'red'
+        }
       },
       {
         id: 'wind',
         name: 'Wind Speed Map',
-        description: 'Wind resource data and average wind speeds',
+        description: `Wind resource data showing average wind speeds at hub height. Design wind speed per ASCE 7 for ${countyClean || 'location'}.`,
         icon: 'fa-wind',
         color: 'sky',
         // NREL Wind Prospector
         viewerUrl: `https://maps.nrel.gov/wind-prospector/?aL=hHsZ8C%255Bv%255D%3Dt&bL=clight&cE=0&lR=0&mC=${latitude}%2C${longitude}&zL=${Math.min(zoomLevel, 14)}`,
         // Global Wind Atlas
-        altViewerUrl: `https://globalwindatlas.info/en/area/United%20States%20of%20America?lon=${longitude}&lat=${latitude}&zoom=${Math.min(zoomLevel, 11)}`,
+        altViewerUrl: `https://globalwindatlas.info/en/area/United%20States%20of%20America?print=true&lon=${longitude}&lat=${latitude}`,
+        // AWS Truepower Wind Navigator
         source: 'NREL Wind Prospector / Global Wind Atlas',
-        requiresKey: false
+        requiresKey: false,
+        note: 'Show wind speed in mph at 80m/100m hub height. Include ASCE 7-22 basic wind speed for structural design.',
+        searchRing: {
+          centerLat: latitude,
+          centerLon: longitude,
+          radiusMiles: searchRadius,
+          radiusFeet: radiusFeet,
+          color: 'red'
+        }
       },
       {
         id: 'airport',
         name: 'Closest Airport Map',
-        description: 'Proximity to airports and heliports (FAA obstruction analysis)',
+        description: `Proximity to airports, heliports, and seaplane bases within 20 miles. Shows distance in statute miles from site coordinates with airport identifiers.`,
         icon: 'fa-plane',
         color: 'indigo',
-        // FAA OE/AAA - Obstruction Evaluation
-        viewerUrl: `https://oeaaa.faa.gov/oeaaa/external/gisTools/gisAction.jsp?action=showLandingPage`,
-        // SkyVector for aviation charts
-        altViewerUrl: `https://skyvector.com/?ll=${latitude},${longitude}&chart=301&zoom=2`,
-        // AirNav airport finder
-        searchUrl: `https://www.airnav.com/cgi-bin/airport-search?place=${latitude}+${longitude}`,
+        // SkyVector with site coordinates
+        viewerUrl: `https://skyvector.com/?ll=${latitude},${longitude}&chart=301&zoom=1`,
+        // AirNav airport search
+        altViewerUrl: `https://www.airnav.com/cgi-bin/airport-search?place=${latitude}+${longitude}&range=20`,
+        // FAA OE/AAA Tool
+        faaUrl: `https://oeaaa.faa.gov/oeaaa/external/gisTools/gisAction.jsp?action=showLandingPage`,
         source: 'FAA / SkyVector / AirNav',
         requiresKey: false,
-        note: 'Check FAA Part 77 surfaces for tower construction requirements.'
+        note: 'List all airports within 5 miles showing: Name, Identifier (e.g., KMCO), Distance (miles), Bearing. Check FAA Part 77 imaginary surfaces for tower height restrictions.',
+        airportInfo: {
+          searchCenter: { lat: latitude, lon: longitude },
+          searchRadiusMiles: 20,
+          requiredFields: ['Airport Name', 'FAA Identifier', 'Distance (miles)', 'Bearing', 'Runway Length', 'Type'],
+          part77Note: 'Notify FAA if structure >200ft AGL or within Part 77 surfaces'
+        },
+        searchRing: {
+          centerLat: latitude,
+          centerLon: longitude,
+          radiusMiles: searchRadius,
+          radiusFeet: radiusFeet,
+          color: 'red'
+        }
       },
       {
         id: 'celltower',
         name: 'Cell Tower & Antenna Map',
-        description: 'Existing cell towers and antenna structures nearby',
+        description: `Existing cell towers, rooftop antennas, and wireless facilities within ${searchRadius}-mile radius. FCC ASR and carrier data.`,
         icon: 'fa-broadcast-tower',
         color: 'red',
-        // FCC Antenna Structure Registration
-        viewerUrl: `https://wireless2.fcc.gov/UlsApp/AsrSearch/asrRegistrationSearch.jsp`,
-        // CellMapper - crowdsourced cell tower data
-        altViewerUrl: `https://www.cellmapper.net/map?MCC=311&MNC=480&type=LTE&latitude=${latitude}&longitude=${longitude}&zoom=${Math.min(zoomLevel, 14)}`,
-        // AntennaSearch
-        searchUrl: `https://www.antennasearch.com/HTML/search/search.php?lat=${latitude}&lon=${longitude}`,
-        source: 'FCC ASR / CellMapper / AntennaSearch',
+        // CellMapper with coordinates
+        viewerUrl: `https://www.cellmapper.net/map?MCC=311&MNC=480&type=LTE&latitude=${latitude}&longitude=${longitude}&zoom=${Math.min(zoomLevel, 14)}&showTowers=true&showTowerLabels=true`,
+        // AntennaSearch radius search
+        altViewerUrl: `https://www.antennasearch.com/HTML/search/search.php?lat=${latitude}&lon=${longitude}`,
+        // FCC ASR Database
+        fccUrl: `https://wireless2.fcc.gov/UlsApp/AsrSearch/asrRegistrationSearch.jsp`,
+        source: 'FCC Antenna Structure Registration / CellMapper / AntennaSearch',
         requiresKey: false,
-        note: 'Use AntennaSearch for 2-4 mile radius tower lookup.'
+        note: `Show all towers within ${searchRadius} miles with: Structure height (ft AGL), Owner, ASR#, Distance from site. AntennaSearch provides 4-mile radius report.`,
+        towerSearch: {
+          centerLat: latitude,
+          centerLon: longitude,
+          radiusMiles: searchRadius,
+          requiredFields: ['Structure Type', 'Height (ft AGL)', 'Owner', 'ASR Number', 'Distance (miles)', 'Bearing']
+        },
+        searchRing: {
+          centerLat: latitude,
+          centerLon: longitude,
+          radiusMiles: searchRadius,
+          radiusFeet: radiusFeet,
+          color: 'red'
+        }
       }
     ]
 
-    // Build response with map data
+    // Build response with enhanced map data
     const response = {
       success: true,
       site: {
@@ -980,13 +1135,28 @@ app.post('/api/scip/generate', async (c) => {
             lon: decimalToDMS(longitude, 'lon')
           }
         },
+        searchRing: {
+          radiusMiles: searchRadius,
+          radiusFeet: radiusFeet,
+          radiusMeters: radiusMeters,
+          boundingBox: bbox
+        },
         zoom: zoomLevel
       },
       maps: scipMaps,
       meta: {
         generated: new Date().toISOString(),
         mapCount: scipMaps.length,
-        note: 'Some maps require external API keys or redirect to authoritative sources.'
+        client: 'Verizon',
+        note: 'Professional SCIP package maps with half-mile search ring radius. Each map should include red waypoint marker at center coordinates.',
+        requirements: [
+          'Red waypoint marker at center coordinates',
+          `${searchRadius}-mile radius circle (${radiusFeet} feet) around waypoint`,
+          'North arrow and scale bar',
+          'Site name and coordinates in title block',
+          'Date generated',
+          'Legend/key for color-coded maps'
+        ]
       }
     }
 
@@ -1001,7 +1171,8 @@ app.post('/api/scip/generate', async (c) => {
           lat: latitude,
           lon: longitude,
           siteName: siteNameClean,
-          address: addressClean
+          address: addressClean,
+          radiusMiles: searchRadius
         }),
         scipMaps.length
       ).run()
