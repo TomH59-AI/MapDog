@@ -367,23 +367,23 @@ app.get('/', (c) => {
   )
 })
 
-// API: Search parcels from MapWise
+// API: Search parcels from Florida Cadastral (ArcGIS)
 app.get('/api/parcels/search', async (c) => {
   const county = c.req.query('county')
   const limitStr = c.req.query('limit') || '10'
-  
+
   // ✅ BEST PRACTICE 1: Validate all user-supplied input
   if (!county) {
-    return c.json({ 
+    return c.json({
       error: 'County parameter is required',
-      hint: 'Provide a county name (e.g., ALACHUA, ORANGE, MIAMI-DADE)'
+      hint: 'Provide a Florida county name (e.g., ALACHUA, ORANGE, MIAMI-DADE)'
     }, 400)
   }
 
   // Validate county format (letters, hyphens, spaces only)
   const countyClean = county.trim().toUpperCase()
   if (!/^[A-Z\s\-]+$/.test(countyClean)) {
-    return c.json({ 
+    return c.json({
       error: 'Invalid county name format',
       hint: 'County name should contain only letters, spaces, and hyphens'
     }, 400)
@@ -392,220 +392,270 @@ app.get('/api/parcels/search', async (c) => {
   // Validate limit parameter
   const limit = parseInt(limitStr, 10)
   if (isNaN(limit) || limit < 1 || limit > 100) {
-    return c.json({ 
+    return c.json({
       error: 'Invalid limit parameter',
       hint: 'Limit must be a number between 1 and 100'
     }, 400)
   }
 
-  const apiKey = c.env.MAPWISE_API_KEY || 'DEMO_KEY'
-  
   try {
-    // Call MapWise API
-    const response = await fetch(
-      `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=${limit}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    )
+    // Florida Cadastral ArcGIS REST API - FREE public data
+    const arcgisUrl = new URL('https://services1.arcgis.com/O1JpcwDW8sjYuddV/arcgis/rest/services/Florida_Parcels/FeatureServer/0/query')
+    arcgisUrl.searchParams.set('where', `UPPER(CO_NAME) LIKE '%${countyClean}%'`)
+    arcgisUrl.searchParams.set('outFields', 'PARCEL_ID,CO_NAME,PHY_ADDR1,PHY_CITY,PHY_ZIPCD,OWNER1,DOR_UC,JV,TV_NSD,LND_VAL,ACREAGE')
+    arcgisUrl.searchParams.set('returnGeometry', 'true')
+    arcgisUrl.searchParams.set('outSR', '4326')
+    arcgisUrl.searchParams.set('resultRecordCount', limit.toString())
+    arcgisUrl.searchParams.set('f', 'json')
 
-    // ✅ BEST PRACTICE 3: Handle non-200 HTTP status codes gracefully
+    const response = await fetch(arcgisUrl.toString())
+
     if (!response.ok) {
       const statusCode = response.status
-      let errorMessage = 'MapWise API error'
-      let userMessage = 'Failed to search parcels'
-
-      switch (statusCode) {
-        case 400:
-          errorMessage = 'Bad request - invalid parameters'
-          userMessage = 'Invalid search parameters. Please check county name.'
-          break
-        case 401:
-          errorMessage = 'Unauthorized - invalid API key'
-          userMessage = 'API authentication failed. Please contact support.'
-          break
-        case 403:
-          errorMessage = 'Forbidden - access denied'
-          userMessage = 'Access denied. Please check your subscription.'
-          break
-        case 404:
-          errorMessage = 'Not found - endpoint or resource not found'
-          userMessage = `No data available for ${countyClean} county.`
-          break
-        case 429:
-          errorMessage = 'Rate limit exceeded'
-          userMessage = 'Too many requests. Please wait a moment and try again.'
-          break
-        case 500:
-        case 502:
-        case 503:
-        case 504:
-          errorMessage = 'MapWise server error'
-          userMessage = 'MapWise service temporarily unavailable. Please try again later.'
-          break
-        default:
-          errorMessage = `HTTP ${statusCode} error`
-          userMessage = 'An unexpected error occurred. Please try again.'
-      }
-
-      console.error(`MapWise API Error: ${statusCode} - ${errorMessage}`)
-      
-      return c.json({ 
-        error: userMessage,
+      console.error(`Florida Cadastral API Error: ${statusCode}`)
+      return c.json({
+        error: 'Florida Cadastral service temporarily unavailable',
         statusCode,
-        details: errorMessage
-      }, statusCode >= 500 ? 503 : statusCode)
+        hint: 'Please try again later'
+      }, 503)
     }
 
-    const data = await response.json()
+    const arcgisData = await response.json()
 
-    // ✅ BEST PRACTICE 2: Check meta.record_count to determine if results were returned
-    const recordCount = data.meta?.record_count || 0
-    const totalCount = data.meta?.total_count || 0
+    // Check for ArcGIS error response
+    if (arcgisData.error) {
+      console.error('ArcGIS Error:', arcgisData.error)
+      return c.json({
+        error: 'Failed to query Florida Cadastral data',
+        details: arcgisData.error.message || 'Unknown ArcGIS error'
+      }, 500)
+    }
+
+    const features = arcgisData.features || []
+    const recordCount = features.length
 
     if (recordCount === 0) {
       console.log(`No results found for ${countyClean}`)
-      // Still return success, but with empty data array
       return c.json({
         success: true,
         data: [],
         meta: {
           record_count: 0,
-          total_count: totalCount,
-          message: `No parcels found matching criteria in ${countyClean} county`
+          total_count: 0,
+          message: `No parcels found in ${countyClean} county`,
+          source: 'Florida Cadastral'
         }
       })
     }
+
+    // Transform ArcGIS response to our format
+    const parcels = features.map((f: any) => ({
+      identifiers: {
+        pin: f.attributes.PARCEL_ID || 'N/A'
+      },
+      address: {
+        street: f.attributes.PHY_ADDR1 || '',
+        city: f.attributes.PHY_CITY || '',
+        zip: f.attributes.PHY_ZIPCD || ''
+      },
+      owner: f.attributes.OWNER1 || 'Unknown',
+      landUseCode: f.attributes.DOR_UC || '',
+      values: {
+        justValue: f.attributes.JV || 0,
+        taxableValue: f.attributes.TV_NSD || 0,
+        landValue: f.attributes.LND_VAL || 0
+      },
+      acreage: f.attributes.ACREAGE || 0,
+      geometry: f.geometry ? {
+        latitude: f.geometry.y,
+        longitude: f.geometry.x
+      } : null
+    }))
 
     // Save successful search to database
     try {
       await c.env.DB.prepare(
         'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
-      ).bind(countyClean, JSON.stringify({ limit }), recordCount).run()
+      ).bind(countyClean, JSON.stringify({ limit, source: 'FL_Cadastral' }), recordCount).run()
     } catch (dbError) {
       console.error('Database save error:', dbError)
-      // Don't fail the request if DB save fails
     }
 
-    console.log(`Successfully retrieved ${recordCount} parcels for ${countyClean}`)
-    return c.json(data)
+    console.log(`Successfully retrieved ${recordCount} parcels for ${countyClean} from FL Cadastral`)
+    return c.json({
+      success: true,
+      data: parcels,
+      meta: {
+        record_count: recordCount,
+        county: countyClean,
+        source: 'Florida Cadastral (FDOR)',
+        message: `Found ${recordCount} parcels in ${countyClean} county`
+      }
+    })
 
   } catch (error) {
     console.error('API Error:', error)
-    
-    // Handle network errors, timeouts, etc.
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    
-    return c.json({ 
-      error: 'Failed to connect to MapWise API',
+
+    return c.json({
+      error: 'Failed to connect to Florida Cadastral API',
       details: errorMessage,
       hint: 'Please check your internet connection and try again'
     }, 500)
   }
 })
 
-// API: Coordinate-based search for RF search rings
+// API: Coordinate-based search for RF search rings (Florida Cadastral)
 app.post('/api/parcels/coordinate-search', async (c) => {
   try {
     const { lat, lon, radius, unit, county, siteName } = await c.req.json()
-    
+
     // Validate inputs
     if (!lat || !lon || !radius || !county) {
-      return c.json({ 
+      return c.json({
         error: 'Missing required parameters',
         hint: 'Provide lat, lon, radius, and county'
       }, 400)
     }
-    
+
     const latitude = parseFloat(lat)
     const longitude = parseFloat(lon)
     const searchRadius = parseFloat(radius)
-    
+
     if (isNaN(latitude) || isNaN(longitude) || isNaN(searchRadius)) {
-      return c.json({ 
+      return c.json({
         error: 'Invalid coordinates or radius',
         hint: 'Coordinates must be valid numbers'
       }, 400)
     }
-    
-    // Validate coordinate ranges
-    if (latitude < -90 || latitude > 90) {
-      return c.json({ error: 'Latitude must be between -90 and 90' }, 400)
+
+    // Validate coordinate ranges (Florida bounds check)
+    if (latitude < 24 || latitude > 31) {
+      return c.json({ error: 'Latitude must be within Florida (24-31)' }, 400)
     }
-    if (longitude < -180 || longitude > 180) {
-      return c.json({ error: 'Longitude must be between -180 and 180' }, 400)
+    if (longitude < -88 || longitude > -79) {
+      return c.json({ error: 'Longitude must be within Florida (-88 to -79)' }, 400)
     }
-    
+
     const countyClean = county.trim().toUpperCase()
     if (!/^[A-Z\s\-]+$/.test(countyClean)) {
-      return c.json({ 
+      return c.json({
         error: 'Invalid county name format',
         hint: 'County name should contain only letters, spaces, and hyphens'
       }, 400)
     }
-    
-    // Convert radius to miles if needed
+
+    // Convert radius to meters for ArcGIS spatial query
     const radiusMiles = unit === 'km' ? searchRadius * 0.621371 : searchRadius
-    
-    const apiKey = c.env.MAPWISE_API_KEY || 'DEMO_KEY'
-    
-    // Fetch parcels from county (limit to reasonable amount)
-    const response = await fetch(
-      `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=100`,
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    )
-    
+    const radiusMeters = radiusMiles * 1609.34
+
+    // Florida Cadastral ArcGIS REST API with spatial query
+    const arcgisUrl = new URL('https://services1.arcgis.com/O1JpcwDW8sjYuddV/arcgis/rest/services/Florida_Parcels/FeatureServer/0/query')
+
+    // Use geometry buffer for radius search
+    arcgisUrl.searchParams.set('where', `UPPER(CO_NAME) LIKE '%${countyClean}%'`)
+    arcgisUrl.searchParams.set('geometry', `${longitude},${latitude}`)
+    arcgisUrl.searchParams.set('geometryType', 'esriGeometryPoint')
+    arcgisUrl.searchParams.set('spatialRel', 'esriSpatialRelIntersects')
+    arcgisUrl.searchParams.set('distance', radiusMeters.toString())
+    arcgisUrl.searchParams.set('units', 'esriSRUnit_Meter')
+    arcgisUrl.searchParams.set('outFields', 'PARCEL_ID,CO_NAME,PHY_ADDR1,PHY_CITY,PHY_ZIPCD,OWNER1,DOR_UC,JV,TV_NSD,LND_VAL,ACREAGE')
+    arcgisUrl.searchParams.set('returnGeometry', 'true')
+    arcgisUrl.searchParams.set('outSR', '4326')
+    arcgisUrl.searchParams.set('resultRecordCount', '100')
+    arcgisUrl.searchParams.set('f', 'json')
+
+    const response = await fetch(arcgisUrl.toString())
+
     if (!response.ok) {
-      return c.json({ 
-        error: 'Failed to fetch parcels from MapWise',
+      return c.json({
+        error: 'Failed to fetch parcels from Florida Cadastral',
         statusCode: response.status
       }, response.status)
     }
-    
-    const data = await response.json()
-    const parcels = data.data || []
-    
-    // Filter parcels by checking if address is within radius
-    // Since MapWise doesn't provide coordinates, we return all parcels
-    // and let frontend do address-based filtering or use external geocoding
-    const results = parcels.map((parcel: any) => ({
-      ...parcel,
-      _searchRing: {
-        centerLat: latitude,
-        centerLon: longitude,
-        radiusMiles: radiusMiles,
-        siteName: siteName || null
+
+    const arcgisData = await response.json()
+
+    if (arcgisData.error) {
+      console.error('ArcGIS Error:', arcgisData.error)
+      return c.json({
+        error: 'Florida Cadastral query failed',
+        details: arcgisData.error.message || 'Unknown error'
+      }, 500)
+    }
+
+    const features = arcgisData.features || []
+
+    // Helper function to calculate distance between two points
+    const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const R = 3959 // Earth radius in miles
+      const dLat = (lat2 - lat1) * Math.PI / 180
+      const dLon = (lon2 - lon1) * Math.PI / 180
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2)
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+      return R * c
+    }
+
+    // Transform and add distance to each parcel
+    const results = features.map((f: any) => {
+      const parcelLat = f.geometry?.y || 0
+      const parcelLon = f.geometry?.x || 0
+      const distanceMiles = haversineDistance(latitude, longitude, parcelLat, parcelLon)
+
+      return {
+        identifiers: {
+          pin: f.attributes.PARCEL_ID || 'N/A'
+        },
+        address: {
+          street: f.attributes.PHY_ADDR1 || '',
+          city: f.attributes.PHY_CITY || '',
+          zip: f.attributes.PHY_ZIPCD || ''
+        },
+        owner: f.attributes.OWNER1 || 'Unknown',
+        landUseCode: f.attributes.DOR_UC || '',
+        values: {
+          justValue: f.attributes.JV || 0,
+          taxableValue: f.attributes.TV_NSD || 0,
+          landValue: f.attributes.LND_VAL || 0
+        },
+        acreage: f.attributes.ACREAGE || 0,
+        geometry: {
+          latitude: parcelLat,
+          longitude: parcelLon
+        },
+        distanceMiles: Math.round(distanceMiles * 100) / 100,
+        _searchRing: {
+          centerLat: latitude,
+          centerLon: longitude,
+          radiusMiles: radiusMiles,
+          siteName: siteName || null
+        }
       }
-    }))
-    
+    }).sort((a: any, b: any) => a.distanceMiles - b.distanceMiles) // Sort by distance
+
     // Save search to database
     try {
       await c.env.DB.prepare(
         'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
       ).bind(
         countyClean,
-        JSON.stringify({ 
+        JSON.stringify({
           type: 'coordinate',
           lat: latitude,
           lon: longitude,
           radius: radiusMiles,
           unit: 'miles',
-          siteName 
+          siteName,
+          source: 'FL_Cadastral'
         }),
         results.length
       ).run()
     } catch (dbError) {
       console.error('Database save error:', dbError)
     }
-    
+
     return c.json({
       success: true,
       results,
@@ -616,111 +666,145 @@ app.post('/api/parcels/coordinate-search', async (c) => {
         county: countyClean,
         siteName: siteName || null,
         total: results.length,
-        note: 'MapWise does not provide parcel coordinates. All parcels in county returned. Use address for distance filtering.'
+        source: 'Florida Cadastral (FDOR)',
+        note: 'Parcels sorted by distance from search center. Includes actual coordinates.'
       }
     })
-    
+
   } catch (error) {
     console.error('Coordinate search error:', error)
-    return c.json({ 
+    return c.json({
       error: 'Failed to perform coordinate search',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, 500)
   }
 })
 
-// API: Bulk PIN search for search rings
+// API: Bulk PIN search for search rings (Florida Cadastral)
 app.post('/api/parcels/bulk-search', async (c) => {
   try {
     const { pins, county, searchRingName } = await c.req.json()
-    
+
     // Validate input
     if (!pins || !Array.isArray(pins) || pins.length === 0) {
-      return c.json({ 
+      return c.json({
         error: 'PIN list is required',
         hint: 'Provide an array of parcel PINs'
       }, 400)
     }
-    
+
     if (!county) {
-      return c.json({ 
+      return c.json({
         error: 'County parameter is required',
         hint: 'Specify which county to search in'
       }, 400)
     }
-    
+
     // Validate county format
     const countyClean = county.trim().toUpperCase()
     if (!/^[A-Z\s\-]+$/.test(countyClean)) {
-      return c.json({ 
+      return c.json({
         error: 'Invalid county name format',
         hint: 'County name should contain only letters, spaces, and hyphens'
       }, 400)
     }
-    
-    const apiKey = c.env.MAPWISE_API_KEY || 'DEMO_KEY'
-    const results = []
-    const errors = []
-    
-    // Search for each PIN (MapWise doesn't support bulk, so we batch)
-    for (const pin of pins.slice(0, 50)) { // Limit to 50 PINs per request
-      try {
-        const response = await fetch(
-          `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=100`,
-          {
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        )
-        
-        if (response.ok) {
-          const data = await response.json()
-          // Find matching PIN in results
-          const match = data.data?.find((p: any) => 
-            p.identifiers?.pin === pin || 
-            p.identifiers?.pin_clean === pin.replace(/[^0-9]/g, '')
-          )
-          if (match) {
-            results.push(match)
-          }
-        }
-      } catch (error) {
-        errors.push({ pin, error: 'Failed to fetch' })
-      }
+
+    // Limit to 50 PINs per request
+    const pinList = pins.slice(0, 50)
+
+    // Build WHERE clause for multiple PINs
+    const pinConditions = pinList.map((pin: string) => `PARCEL_ID = '${pin.replace(/'/g, "''")}'`).join(' OR ')
+    const whereClause = `UPPER(CO_NAME) LIKE '%${countyClean}%' AND (${pinConditions})`
+
+    // Florida Cadastral ArcGIS REST API
+    const arcgisUrl = new URL('https://services1.arcgis.com/O1JpcwDW8sjYuddV/arcgis/rest/services/Florida_Parcels/FeatureServer/0/query')
+    arcgisUrl.searchParams.set('where', whereClause)
+    arcgisUrl.searchParams.set('outFields', 'PARCEL_ID,CO_NAME,PHY_ADDR1,PHY_CITY,PHY_ZIPCD,OWNER1,DOR_UC,JV,TV_NSD,LND_VAL,ACREAGE')
+    arcgisUrl.searchParams.set('returnGeometry', 'true')
+    arcgisUrl.searchParams.set('outSR', '4326')
+    arcgisUrl.searchParams.set('resultRecordCount', '100')
+    arcgisUrl.searchParams.set('f', 'json')
+
+    const response = await fetch(arcgisUrl.toString())
+
+    if (!response.ok) {
+      return c.json({
+        error: 'Florida Cadastral service unavailable',
+        statusCode: response.status
+      }, 503)
     }
-    
+
+    const arcgisData = await response.json()
+
+    if (arcgisData.error) {
+      console.error('ArcGIS Error:', arcgisData.error)
+      return c.json({
+        error: 'Florida Cadastral query failed',
+        details: arcgisData.error.message || 'Unknown error'
+      }, 500)
+    }
+
+    const features = arcgisData.features || []
+
+    // Transform results
+    const results = features.map((f: any) => ({
+      identifiers: {
+        pin: f.attributes.PARCEL_ID || 'N/A'
+      },
+      address: {
+        street: f.attributes.PHY_ADDR1 || '',
+        city: f.attributes.PHY_CITY || '',
+        zip: f.attributes.PHY_ZIPCD || ''
+      },
+      owner: f.attributes.OWNER1 || 'Unknown',
+      landUseCode: f.attributes.DOR_UC || '',
+      values: {
+        justValue: f.attributes.JV || 0,
+        taxableValue: f.attributes.TV_NSD || 0,
+        landValue: f.attributes.LND_VAL || 0
+      },
+      acreage: f.attributes.ACREAGE || 0,
+      geometry: f.geometry ? {
+        latitude: f.geometry.y,
+        longitude: f.geometry.x
+      } : null
+    }))
+
+    // Track which PINs were not found
+    const foundPins = new Set(results.map((r: any) => r.identifiers.pin))
+    const notFound = pinList.filter((pin: string) => !foundPins.has(pin))
+
     // Save search ring to database if name provided
     if (searchRingName) {
       try {
         await c.env.DB.prepare(
           'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
         ).bind(
-          countyClean, 
-          JSON.stringify({ type: 'bulk', pins, searchRingName }), 
+          countyClean,
+          JSON.stringify({ type: 'bulk', pins: pinList, searchRingName, source: 'FL_Cadastral' }),
           results.length
         ).run()
       } catch (dbError) {
         console.error('Database save error:', dbError)
       }
     }
-    
+
     return c.json({
       success: true,
       results,
       meta: {
-        requested: pins.length,
+        requested: pinList.length,
         found: results.length,
-        errors: errors.length,
-        searchRingName: searchRingName || null
+        notFound: notFound.length,
+        searchRingName: searchRingName || null,
+        source: 'Florida Cadastral (FDOR)'
       },
-      errors: errors.length > 0 ? errors : undefined
+      notFoundPins: notFound.length > 0 ? notFound : undefined
     })
-    
+
   } catch (error) {
     console.error('Bulk search error:', error)
-    return c.json({ 
+    return c.json({
       error: 'Failed to perform bulk search',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, 500)
