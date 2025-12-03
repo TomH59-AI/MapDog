@@ -5,6 +5,8 @@ import { renderer } from './renderer'
 type Bindings = {
   DB: D1Database
   MAPWISE_API_KEY: string
+  NOTION_API_KEY: string
+  NOTION_DATABASE_ID: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -1208,6 +1210,110 @@ function decimalToDMS(decimal: number, type: 'lat' | 'lon'): string {
 
   return `${degrees}° ${minutes}' ${seconds}" ${direction}`
 }
+
+// API: Export SCIP data to Notion
+app.post('/api/notion/export-scip', async (c) => {
+  try {
+    const { siteName, county, coordinates, address, maps, generatedAt } = await c.req.json()
+
+    // Validate input
+    if (!siteName) {
+      return c.json({ error: 'Site name is required' }, 400)
+    }
+
+    const notionApiKey = c.env.NOTION_API_KEY
+    const databaseId = c.env.NOTION_DATABASE_ID
+
+    if (!notionApiKey || !databaseId) {
+      return c.json({
+        error: 'Notion integration not configured',
+        hint: 'Set NOTION_API_KEY and NOTION_DATABASE_ID environment variables'
+      }, 500)
+    }
+
+    // Build content summary
+    const contentLines = [
+      `Site: ${siteName}`,
+      `County: ${county || 'N/A'}`,
+      `Coordinates: ${coordinates?.latitude}, ${coordinates?.longitude}`,
+      `DMS: ${coordinates?.dms?.lat} / ${coordinates?.dms?.lon}`,
+      address ? `Address: ${address}` : '',
+      '',
+      'SCIP Maps Generated:',
+      ...(maps || []).map((m: any) => `• ${m.name}`),
+      '',
+      `Generated: ${generatedAt || new Date().toISOString()}`
+    ].filter(line => line !== undefined).join('\n')
+
+    // Create Notion page
+    const notionResponse = await fetch('https://api.notion.com/v1/pages', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${notionApiKey}`,
+        'Content-Type': 'application/json',
+        'Notion-Version': '2022-06-28'
+      },
+      body: JSON.stringify({
+        parent: { database_id: databaseId },
+        properties: {
+          'Name': {
+            title: [
+              {
+                text: {
+                  content: `SCIP - ${siteName}`
+                }
+              }
+            ]
+          },
+          'Content': {
+            rich_text: [
+              {
+                text: {
+                  content: contentLines.substring(0, 2000) // Notion limit
+                }
+              }
+            ]
+          },
+          'Date': {
+            date: {
+              start: new Date().toISOString().split('T')[0]
+            }
+          },
+          'Status': {
+            select: {
+              name: 'Active'
+            }
+          }
+        }
+      })
+    })
+
+    if (!notionResponse.ok) {
+      const errorData = await notionResponse.json()
+      console.error('Notion API error:', errorData)
+      return c.json({
+        error: 'Failed to create Notion page',
+        details: errorData
+      }, notionResponse.status)
+    }
+
+    const notionPage = await notionResponse.json()
+
+    return c.json({
+      success: true,
+      message: 'SCIP data exported to Notion',
+      pageId: notionPage.id,
+      pageUrl: notionPage.url
+    })
+
+  } catch (error) {
+    console.error('Notion export error:', error)
+    return c.json({
+      error: 'Failed to export to Notion',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
 
 // API: Get statistics
 app.get('/api/stats', async (c) => {

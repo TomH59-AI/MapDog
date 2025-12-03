@@ -979,6 +979,13 @@ function displayScipResults(data) {
             <i class="fas fa-file-pdf mr-2"></i>Export Summary
           </button>
           <button
+            onclick="exportToNotion()"
+            class="px-4 py-2 bg-gray-800 hover:bg-black text-white rounded-lg transition-all text-sm"
+            title="Export to Notion database"
+          >
+            <i class="fas fa-database mr-2"></i>Export to Notion
+          </button>
+          <button
             onclick="openAllScipMaps()"
             class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-all text-sm"
             title="Open all maps in new tabs"
@@ -1234,5 +1241,71 @@ function exportScipPdf() {
   // Trigger print dialog after content loads
   printWindow.onload = function() {
     printWindow.print()
+  }
+}
+
+// Export SCIP data to Notion database
+async function exportToNotion() {
+  if (!currentScipData) {
+    alert('No SCIP data available. Please generate maps first.')
+    return
+  }
+
+  const site = currentScipData.site
+  const maps = currentScipData.maps
+
+  showLoading(true, 'Exporting to Notion...')
+
+  try {
+    const response = await fetch('/api/notion/export-scip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        siteName: site.name,
+        county: site.county,
+        coordinates: site.coordinates,
+        address: site.address,
+        maps: maps.map(m => ({ id: m.id, name: m.name })),
+        generatedAt: currentScipData.meta.generated
+      })
+    })
+
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error + (data.details ? '\n\n' + JSON.stringify(data.details) : ''))
+    }
+
+    // Show success with link to Notion page
+    const resultsDiv = document.getElementById('results')
+    const existingContent = resultsDiv.innerHTML
+
+    // Add success banner at the top
+    const successBanner = `
+      <div class="mb-4 p-4 bg-green-50 border-2 border-green-400 rounded-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <h4 class="font-bold text-green-800">
+              <i class="fas fa-check-circle mr-2"></i>Exported to Notion!
+            </h4>
+            <p class="text-sm text-green-700 mt-1">SCIP data for "${site.name}" has been saved to your Notion database.</p>
+          </div>
+          ${data.pageUrl ? `
+            <a href="${data.pageUrl}" target="_blank" class="px-4 py-2 bg-gray-800 hover:bg-black text-white rounded-lg text-sm">
+              <i class="fas fa-external-link-alt mr-2"></i>Open in Notion
+            </a>
+          ` : ''}
+        </div>
+      </div>
+    `
+
+    resultsDiv.innerHTML = successBanner + existingContent
+
+    alert(`✅ SCIP data exported to Notion!\n\nSite: ${site.name}\nStatus: Active`)
+
+  } catch (error) {
+    showError('Failed to export to Notion: ' + error.message)
+  } finally {
+    showLoading(false)
   }
 }
