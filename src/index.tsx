@@ -81,12 +81,19 @@ app.get('/', (c) => {
             >
               <i class="fas fa-crosshairs mr-2"></i>RF Coordinates
             </button>
-            <button 
+            <button
               id="bulkModeBtn"
               onclick="switchMode('bulk')"
               class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
             >
               <i class="fas fa-layer-group mr-2"></i>Bulk PINs
+            </button>
+            <button
+              id="scipModeBtn"
+              onclick="switchMode('scip')"
+              class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
+            >
+              <i class="fas fa-map-marked-alt mr-2"></i>SCIP Maps
             </button>
           </div>
 
@@ -208,6 +215,99 @@ app.get('/', (c) => {
             <p class="text-xs text-gray-500 mt-2">
               <i class="fas fa-info-circle mr-1"></i>
               Paste PINs from your search ring tool • Max 50 PINs per search
+            </p>
+          </div>
+
+          {/* SCIP Maps Section (Hidden by default) */}
+          <div id="scipMapsSection" class="hidden mb-6">
+            <label class="block text-gray-700 text-lg font-semibold mb-3">
+              <i class="fas fa-map-marked-alt text-emerald-600 mr-2"></i>
+              SCIP Maps Generator - Site Candidate Information Package
+            </label>
+            <div class="bg-emerald-50 border-2 border-emerald-200 rounded-lg p-4 mb-4">
+              <p class="text-sm text-emerald-800 mb-2">
+                <i class="fas fa-info-circle mr-2"></i>
+                Generate all 10 standard SCIP maps for wireless site acquisition:
+              </p>
+              <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs text-emerald-700">
+                <span><i class="fas fa-satellite mr-1"></i>Aerial</span>
+                <span><i class="fas fa-mountain mr-1"></i>Topography</span>
+                <span><i class="fas fa-water mr-1"></i>Floodplain</span>
+                <span><i class="fas fa-city mr-1"></i>Zoning</span>
+                <span><i class="fas fa-map mr-1"></i>FLU</span>
+                <span><i class="fas fa-leaf mr-1"></i>Wetlands</span>
+                <span><i class="fas fa-vector-square mr-1"></i>Parcel</span>
+                <span><i class="fas fa-wind mr-1"></i>Wind Speed</span>
+                <span><i class="fas fa-plane mr-1"></i>Airport</span>
+                <span><i class="fas fa-broadcast-tower mr-1"></i>Cell Tower</span>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+              <input
+                type="text"
+                id="scipSiteName"
+                placeholder="Site Name (e.g., Orlando Tower Site 1)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none"
+              />
+              <input
+                type="text"
+                id="scipCounty"
+                placeholder="County (e.g., ORANGE)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+            <div class="grid grid-cols-3 gap-3 mb-3">
+              <input
+                type="text"
+                id="scipLat"
+                placeholder="Latitude (e.g., 28.5383)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none"
+              />
+              <input
+                type="text"
+                id="scipLon"
+                placeholder="Longitude (e.g., -81.3792)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none"
+              />
+              <input
+                type="text"
+                id="scipAddress"
+                placeholder="Site Address (optional)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+            <div class="flex gap-3 mb-3">
+              <div class="flex items-center gap-2">
+                <label class="text-sm text-gray-600">Zoom Level:</label>
+                <input
+                  type="range"
+                  id="scipZoom"
+                  min="12"
+                  max="19"
+                  value="17"
+                  class="w-24"
+                  oninput="document.getElementById('scipZoomValue').textContent = this.value"
+                />
+                <span id="scipZoomValue" class="text-sm font-semibold text-emerald-600">17</span>
+              </div>
+            </div>
+            <div class="flex gap-3">
+              <button
+                onclick="generateScipMaps()"
+                class="flex-1 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                <i class="fas fa-map-marked-alt mr-2"></i>Generate SCIP Maps
+              </button>
+              <button
+                onclick="clearScipForm()"
+                class="px-6 py-3 bg-gray-400 hover:bg-gray-500 text-white font-semibold rounded-lg transition-all"
+              >
+                <i class="fas fa-times mr-2"></i>Clear
+              </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">
+              <i class="fas fa-info-circle mr-1"></i>
+              Opens authoritative map sources for each layer • Export SCIP package as PDF
             </p>
           </div>
 
@@ -676,6 +776,267 @@ app.get('/api/searches/history', async (c) => {
     return c.json({ error: 'Failed to fetch search history' }, 500)
   }
 })
+
+// API: Generate SCIP Maps
+app.post('/api/scip/generate', async (c) => {
+  try {
+    const { lat, lon, siteName, county, address, zoom = 17 } = await c.req.json()
+
+    // Validate inputs
+    if (!lat || !lon) {
+      return c.json({
+        error: 'Missing required parameters',
+        hint: 'Provide lat and lon coordinates'
+      }, 400)
+    }
+
+    const latitude = parseFloat(lat)
+    const longitude = parseFloat(lon)
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return c.json({
+        error: 'Invalid coordinates',
+        hint: 'Coordinates must be valid numbers'
+      }, 400)
+    }
+
+    // Validate coordinate ranges
+    if (latitude < -90 || latitude > 90) {
+      return c.json({ error: 'Latitude must be between -90 and 90' }, 400)
+    }
+    if (longitude < -180 || longitude > 180) {
+      return c.json({ error: 'Longitude must be between -180 and 180' }, 400)
+    }
+
+    // Clean inputs
+    const siteNameClean = siteName?.trim() || 'Unnamed Site'
+    const countyClean = county?.trim().toUpperCase() || ''
+    const addressClean = address?.trim() || ''
+    const zoomLevel = Math.min(Math.max(parseInt(zoom) || 17, 10), 20)
+
+    // Map dimensions for static maps
+    const mapWidth = 640
+    const mapHeight = 480
+
+    // Generate SCIP map configurations
+    // These use various free/public map services and authoritative data sources
+    const scipMaps = [
+      {
+        id: 'aerial',
+        name: 'Aerial Map',
+        description: 'Satellite/aerial imagery showing site surroundings',
+        icon: 'fa-satellite',
+        color: 'blue',
+        // Google Static Maps - satellite view
+        staticUrl: `https://maps.googleapis.com/maps/api/staticmap?center=${latitude},${longitude}&zoom=${zoomLevel}&size=${mapWidth}x${mapHeight}&maptype=satellite&markers=color:red%7C${latitude},${longitude}`,
+        // Fallback to OpenStreetMap tiles
+        fallbackUrl: `https://tile.openstreetmap.org/${zoomLevel}/${Math.floor((longitude + 180) / 360 * Math.pow(2, zoomLevel))}/${Math.floor((1 - Math.log(Math.tan(latitude * Math.PI / 180) + 1 / Math.cos(latitude * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoomLevel))}.png`,
+        // Interactive viewer URL
+        viewerUrl: `https://www.google.com/maps/@${latitude},${longitude},${zoomLevel}z/data=!3m1!1e1!4m5!3m4`,
+        source: 'Google Maps Satellite',
+        requiresKey: true
+      },
+      {
+        id: 'topography',
+        name: 'Topography Map',
+        description: 'Terrain and elevation map showing contours',
+        icon: 'fa-mountain',
+        color: 'green',
+        staticUrl: `https://maps.googleapis.com/maps/api/staticmap?center=${latitude},${longitude}&zoom=${zoomLevel}&size=${mapWidth}x${mapHeight}&maptype=terrain&markers=color:red%7C${latitude},${longitude}`,
+        viewerUrl: `https://www.google.com/maps/@${latitude},${longitude},${zoomLevel}z/data=!5m1!1e4`,
+        source: 'Google Maps Terrain',
+        requiresKey: true
+      },
+      {
+        id: 'floodplain',
+        name: 'Floodplain Map',
+        description: 'FEMA flood zone designations and flood hazard areas',
+        icon: 'fa-water',
+        color: 'cyan',
+        // FEMA National Flood Hazard Layer viewer
+        viewerUrl: `https://msc.fema.gov/portal/search?AddressQuery=${latitude}%2C${longitude}#searchresultsanchor`,
+        // Alternative: Flood Map Service Center
+        altViewerUrl: `https://hazards-fema.maps.arcgis.com/apps/webappviewer/index.html?id=8b0adb51996444d4879338b5529aa9cd&extent=${longitude-0.01},${latitude-0.01},${longitude+0.01},${latitude+0.01},4326`,
+        // FEMA ArcGIS REST Service for embedding
+        esriUrl: `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/export?bbox=${longitude-0.005},${latitude-0.005},${longitude+0.005},${latitude+0.005}&bboxSR=4326&imageSR=4326&size=${mapWidth},${mapHeight}&format=png&f=image`,
+        source: 'FEMA National Flood Hazard Layer',
+        requiresKey: false
+      },
+      {
+        id: 'zoning',
+        name: 'Zoning Map',
+        description: 'Local zoning district classifications',
+        icon: 'fa-city',
+        color: 'purple',
+        // County-specific - we provide general guidance
+        viewerUrl: countyClean
+          ? `https://www.google.com/search?q=${encodeURIComponent(countyClean)}+county+florida+zoning+map+GIS`
+          : `https://www.google.com/search?q=zoning+map+${latitude}+${longitude}`,
+        // Many counties use ArcGIS Online
+        altViewerUrl: `https://www.arcgis.com/home/webmap/viewer.html?center=${longitude},${latitude}&level=${zoomLevel}`,
+        source: 'County Zoning Authority',
+        requiresKey: false,
+        note: 'Zoning maps are county-specific. Check your local county GIS portal.'
+      },
+      {
+        id: 'flu',
+        name: 'FLU Map (Future Land Use)',
+        description: 'Future Land Use designations from comprehensive plan',
+        icon: 'fa-map',
+        color: 'orange',
+        viewerUrl: countyClean
+          ? `https://www.google.com/search?q=${encodeURIComponent(countyClean)}+county+florida+future+land+use+map`
+          : `https://www.google.com/search?q=future+land+use+map+${latitude}+${longitude}`,
+        source: 'County Planning Department',
+        requiresKey: false,
+        note: 'FLU maps are county-specific. Check local comprehensive plan.'
+      },
+      {
+        id: 'wetlands',
+        name: 'Wetlands Map',
+        description: 'National Wetlands Inventory (NWI) data',
+        icon: 'fa-leaf',
+        color: 'teal',
+        // USFWS National Wetlands Inventory
+        viewerUrl: `https://fwsprimary.wim.usgs.gov/wetlands/apps/wetlands-mapper/?ll=${latitude},${longitude}&z=${zoomLevel}`,
+        // NWI ArcGIS Service for embedding
+        esriUrl: `https://www.fws.gov/wetlands/arcgis/rest/services/Wetlands/MapServer/export?bbox=${longitude-0.01},${latitude-0.01},${longitude+0.01},${latitude+0.01}&bboxSR=4326&imageSR=4326&size=${mapWidth},${mapHeight}&format=png&f=image`,
+        source: 'USFWS National Wetlands Inventory',
+        requiresKey: false
+      },
+      {
+        id: 'parcel',
+        name: 'Parcel Map',
+        description: 'Property parcel boundaries and ownership',
+        icon: 'fa-vector-square',
+        color: 'yellow',
+        viewerUrl: countyClean
+          ? `https://www.google.com/search?q=${encodeURIComponent(countyClean)}+county+florida+property+appraiser+parcel+map`
+          : `https://www.google.com/maps/@${latitude},${longitude},${zoomLevel}z`,
+        // MapWise parcel data available in county search
+        source: 'County Property Appraiser / MapWise',
+        requiresKey: false,
+        note: 'Use County Search mode to find parcels near this location.'
+      },
+      {
+        id: 'wind',
+        name: 'Wind Speed Map',
+        description: 'Wind resource data and average wind speeds',
+        icon: 'fa-wind',
+        color: 'sky',
+        // NREL Wind Prospector
+        viewerUrl: `https://maps.nrel.gov/wind-prospector/?aL=hHsZ8C%255Bv%255D%3Dt&bL=clight&cE=0&lR=0&mC=${latitude}%2C${longitude}&zL=${Math.min(zoomLevel, 14)}`,
+        // Global Wind Atlas
+        altViewerUrl: `https://globalwindatlas.info/en/area/United%20States%20of%20America?lon=${longitude}&lat=${latitude}&zoom=${Math.min(zoomLevel, 11)}`,
+        source: 'NREL Wind Prospector / Global Wind Atlas',
+        requiresKey: false
+      },
+      {
+        id: 'airport',
+        name: 'Closest Airport Map',
+        description: 'Proximity to airports and heliports (FAA obstruction analysis)',
+        icon: 'fa-plane',
+        color: 'indigo',
+        // FAA OE/AAA - Obstruction Evaluation
+        viewerUrl: `https://oeaaa.faa.gov/oeaaa/external/gisTools/gisAction.jsp?action=showLandingPage`,
+        // SkyVector for aviation charts
+        altViewerUrl: `https://skyvector.com/?ll=${latitude},${longitude}&chart=301&zoom=2`,
+        // AirNav airport finder
+        searchUrl: `https://www.airnav.com/cgi-bin/airport-search?place=${latitude}+${longitude}`,
+        source: 'FAA / SkyVector / AirNav',
+        requiresKey: false,
+        note: 'Check FAA Part 77 surfaces for tower construction requirements.'
+      },
+      {
+        id: 'celltower',
+        name: 'Cell Tower & Antenna Map',
+        description: 'Existing cell towers and antenna structures nearby',
+        icon: 'fa-broadcast-tower',
+        color: 'red',
+        // FCC Antenna Structure Registration
+        viewerUrl: `https://wireless2.fcc.gov/UlsApp/AsrSearch/asrRegistrationSearch.jsp`,
+        // CellMapper - crowdsourced cell tower data
+        altViewerUrl: `https://www.cellmapper.net/map?MCC=311&MNC=480&type=LTE&latitude=${latitude}&longitude=${longitude}&zoom=${Math.min(zoomLevel, 14)}`,
+        // AntennaSearch
+        searchUrl: `https://www.antennasearch.com/HTML/search/search.php?lat=${latitude}&lon=${longitude}`,
+        source: 'FCC ASR / CellMapper / AntennaSearch',
+        requiresKey: false,
+        note: 'Use AntennaSearch for 2-4 mile radius tower lookup.'
+      }
+    ]
+
+    // Build response with map data
+    const response = {
+      success: true,
+      site: {
+        name: siteNameClean,
+        county: countyClean,
+        address: addressClean,
+        coordinates: {
+          latitude,
+          longitude,
+          dms: {
+            lat: decimalToDMS(latitude, 'lat'),
+            lon: decimalToDMS(longitude, 'lon')
+          }
+        },
+        zoom: zoomLevel
+      },
+      maps: scipMaps,
+      meta: {
+        generated: new Date().toISOString(),
+        mapCount: scipMaps.length,
+        note: 'Some maps require external API keys or redirect to authoritative sources.'
+      }
+    }
+
+    // Log SCIP generation to database
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
+      ).bind(
+        countyClean || 'N/A',
+        JSON.stringify({
+          type: 'scip',
+          lat: latitude,
+          lon: longitude,
+          siteName: siteNameClean,
+          address: addressClean
+        }),
+        scipMaps.length
+      ).run()
+    } catch (dbError) {
+      console.error('Database save error:', dbError)
+    }
+
+    return c.json(response)
+
+  } catch (error) {
+    console.error('SCIP generation error:', error)
+    return c.json({
+      error: 'Failed to generate SCIP maps',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
+// Helper function to convert decimal degrees to DMS
+function decimalToDMS(decimal: number, type: 'lat' | 'lon'): string {
+  const absolute = Math.abs(decimal)
+  const degrees = Math.floor(absolute)
+  const minutesNotTruncated = (absolute - degrees) * 60
+  const minutes = Math.floor(minutesNotTruncated)
+  const seconds = ((minutesNotTruncated - minutes) * 60).toFixed(2)
+
+  let direction = ''
+  if (type === 'lat') {
+    direction = decimal >= 0 ? 'N' : 'S'
+  } else {
+    direction = decimal >= 0 ? 'E' : 'W'
+  }
+
+  return `${degrees}° ${minutes}' ${seconds}" ${direction}`
+}
 
 // API: Get statistics
 app.get('/api/stats', async (c) => {
