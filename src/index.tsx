@@ -809,49 +809,53 @@ app.post('/api/scip-maps/generate', async (c) => {
     const width = 800
     const height = 600
 
-    // Generate URLs for all 10 SCIP map types
+    // Calculate bounding box for the area (approximately 0.5 mile radius)
+    const delta = 0.008 // roughly 0.5 miles
+    const bbox = `${longitude - delta},${latitude - delta},${longitude + delta},${latitude + delta}`
+
+    // Generate URLs for all 10 SCIP map types using free public services
     const maps = [
       {
         id: 'aerial',
         name: 'Aerial Map',
         description: 'Satellite/aerial imagery of the site',
-        url: `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},${zoomLevel},0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
-        fallbackUrl: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${longitude - 0.01},${latitude - 0.01},${longitude + 0.01},${latitude + 0.01}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`
+        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
+        note: 'ESRI World Imagery - high resolution satellite view'
       },
       {
         id: 'topography',
         name: 'Topography Map',
         description: 'Terrain and elevation contours',
-        url: `https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},${zoomLevel},0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
-        fallbackUrl: `https://tile.opentopomap.org/${zoomLevel}/${Math.floor((longitude + 180) / 360 * Math.pow(2, zoomLevel))}/${Math.floor((1 - Math.log(Math.tan(latitude * Math.PI / 180) + 1 / Math.cos(latitude * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoomLevel))}.png`
+        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
+        note: 'ESRI World Topographic Map with terrain features'
       },
       {
         id: 'floodplain',
         name: 'Floodplain Map',
         description: 'FEMA flood zones and hazard areas',
-        url: `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/export?bbox=${longitude - 0.008},${latitude - 0.006},${longitude + 0.008},${latitude + 0.006}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png32&transparent=false&layers=show:28&f=image`,
-        wmsUrl: `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer`,
-        note: 'Shows FEMA National Flood Hazard Layer zones'
+        url: `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png32&transparent=false&layers=show:28&f=image`,
+        wmsUrl: 'https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer',
+        note: 'FEMA National Flood Hazard Layer - official flood zone data'
       },
       {
         id: 'zoning',
         name: 'Zoning Map',
         description: 'Local zoning districts and classifications',
-        url: `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},${zoomLevel},0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
-        note: 'Zoning data varies by municipality - check local GIS portal for overlay'
+        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
+        note: 'Base map - zoning data varies by municipality, check local GIS portal'
       },
       {
         id: 'flu',
         name: 'FLU Map (Future Land Use)',
         description: 'Future land use planning designations',
-        url: `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/pin-l+0000ff(${longitude},${latitude})/${longitude},${latitude},${zoomLevel},0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
-        note: 'FLU data varies by municipality - check local comprehensive plan'
+        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
+        note: 'Base map - FLU data varies by municipality, check local comprehensive plan'
       },
       {
         id: 'wetlands',
         name: 'Wetlands Map',
         description: 'National Wetlands Inventory (NWI) data',
-        url: `https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/export?bbox=${longitude - 0.008},${latitude - 0.006},${longitude + 0.008},${latitude + 0.006}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png32&transparent=false&f=image`,
+        url: `https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png32&transparent=false&f=image`,
         wmsUrl: 'https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer',
         note: 'US Fish & Wildlife Service National Wetlands Inventory'
       },
@@ -859,32 +863,32 @@ app.post('/api/scip-maps/generate', async (c) => {
         id: 'parcel',
         name: 'Parcel Map',
         description: 'Property boundaries and parcel lines',
-        url: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},${zoomLevel + 1},0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
-        note: 'Parcel boundaries available via county property appraiser GIS'
+        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${longitude - 0.004},${latitude - 0.003},${longitude + 0.004},${latitude + 0.003}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
+        note: 'Zoomed street view - parcel boundaries via county property appraiser GIS'
       },
       {
         id: 'windspeed',
         name: 'Wind Speed Map',
         description: 'Average wind speeds for the area',
-        url: `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/pin-l+00ff00(${longitude},${latitude})/${longitude},${latitude},10,0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
+        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${longitude - 0.05},${latitude - 0.04},${longitude + 0.05},${latitude + 0.04}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
         dataSource: 'https://windexchange.energy.gov/maps-data',
-        note: 'Wind data from NREL - typical speeds 5-15 mph in Florida'
+        note: 'Regional view - wind data from NREL, typical speeds 5-15 mph in Florida'
       },
       {
         id: 'airport',
         name: 'Closest Airport Map',
         description: 'Nearby airports and flight paths',
-        url: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},11,0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
+        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${longitude - 0.1},${latitude - 0.08},${longitude + 0.1},${latitude + 0.08}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
         dataSource: 'https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/',
-        note: 'FAA regulations require notification for structures >200ft or within airport zones'
+        note: 'Wide area view - FAA requires notification for structures >200ft or within airport zones'
       },
       {
         id: 'celltower',
         name: 'Closest Cell Tower and Antenna Map',
         description: 'Existing cell towers and antenna structures',
-        url: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+ff0000(${longitude},${latitude})/${longitude},${latitude},13,0/${width}x${height}@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
+        url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${longitude - 0.02},${latitude - 0.015},${longitude + 0.02},${latitude + 0.015}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=png&f=image`,
         dataSource: 'https://www.fcc.gov/media/radio/antenna-structure-registration-asr',
-        note: 'FCC ASR database shows registered antenna structures'
+        note: 'Area view - check FCC ASR database for registered antenna structures'
       }
     ]
 
