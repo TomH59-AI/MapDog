@@ -806,7 +806,7 @@ app.post('/api/scip-maps/generate', async (c) => {
     }
 
     // API Keys for high-quality map services
-    const MAPBOX_API_KEY = 'pk.eyI1IjoidG9taG9sbGFuZDU5IiwiYSI6ImNtNG9iYWJnbzAycTd5cG15dHRqZENEZ3cifQ.AlzaSyBZyS6oMANyDrZZZE6Hr1Aeuj6Z1P1k7EE'
+    const MAPBOX_API_KEY = 'pk.eyJ1IjoidG9taG9sbGFuZDU5IiwiYSI6ImNtNG9iYWJnbzAycTd5cG15dHRqZENEZ3cifQ.Hnh4LajregVqALkNsi-3fg'
     const ESRI_API_KEY = 'AAPTxy8BH1VEsoebNVZXo8HurDfuy7_uzXxzsBVSTXAEc0GMZMhjogZoHyrU0daXIKm1zEGuhgDF_XwoBMAVmBgSt6oOAmuE2WK0ksy3ct3gA3gY-K_2BiLNQVnjV10sdpzuyKEC4wpUMhbwM2Q6W4mDL_AlCxFr33JG5lsCeP5kJ8ajsoJNUqheePSnf3bb6V3MS71PwAsYTm3zaMVApSjEok9LPGIeKLQdG9pcgqLYR1Y.AT1_nd4vHWnB'
     const USGS_TOKEN = 'AWf1yj@7CBsyEyIXFArYdJlq8MrrWGhc5mgD_ful_r1tKi@mWCIZB0AALa0R6ufs'
     const OPENCELLID_TOKEN = 'pk.6d4e560229de9121955a48aa246647b2'
