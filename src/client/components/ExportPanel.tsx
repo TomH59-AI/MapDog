@@ -1,6 +1,7 @@
 import React from 'react'
 import * as XLSX from 'xlsx'
 import type { Parcel } from '../App'
+import { exportSCIPXLSX } from '../xlsxExport'
 
 interface ExportPanelProps {
   parcels: Parcel[]
@@ -200,11 +201,18 @@ export default function ExportPanel({ parcels }: ExportPanelProps) {
     URL.revokeObjectURL(url)
   }
 
+  // Export full SCIP Package using scipData schema
+  const exportSCIPPackage = () => {
+    exportSCIPXLSX(`SCIP_Package_${Date.now()}.xlsx`)
+    alert('SCIP Package exported with Maps & Photos sheets')
+  }
+
   const exportOptions = [
     { id: 'csv', label: 'CSV', icon: 'fa-file-csv', color: 'orange', action: exportCSV },
     { id: 'geojson', label: 'GeoJSON', icon: 'fa-globe', color: 'teal', action: exportGeoJSON },
     { id: 'xlsx', label: 'Excel', icon: 'fa-file-excel', color: 'green', action: exportXLSX },
-    { id: 'scip', label: 'SCIP', icon: 'fa-broadcast-tower', color: 'purple', action: exportSCIP }
+    { id: 'scip', label: 'SCIP List', icon: 'fa-broadcast-tower', color: 'purple', action: exportSCIP },
+    { id: 'scip-pkg', label: 'SCIP Package', icon: 'fa-file-powerpoint', color: 'blue', action: exportSCIPPackage }
   ]
 
   return (
@@ -233,7 +241,8 @@ export default function ExportPanel({ parcels }: ExportPanelProps) {
                 backgroundColor: opt.color === 'orange' ? '#ea580c' :
                                  opt.color === 'teal' ? '#0d9488' :
                                  opt.color === 'green' ? '#16a34a' :
-                                 opt.color === 'purple' ? '#9333ea' : undefined
+                                 opt.color === 'purple' ? '#9333ea' :
+                                 opt.color === 'blue' ? '#2563eb' : undefined
               }}
             >
               <i className={`fas ${opt.icon}`}></i>
@@ -247,7 +256,8 @@ export default function ExportPanel({ parcels }: ExportPanelProps) {
               <li><strong>CSV:</strong> Universal spreadsheet format</li>
               <li><strong>GeoJSON:</strong> For GIS/mapping software</li>
               <li><strong>Excel:</strong> Full formatting support</li>
-              <li><strong>SCIP:</strong> Site Candidate Info Package</li>
+              <li><strong>SCIP List:</strong> Quick parcel list for sites</li>
+              <li><strong>SCIP Package:</strong> Full form w/ Maps sheet</li>
             </ul>
           </div>
         </div>
