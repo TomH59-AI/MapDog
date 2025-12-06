@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import type { Parcel } from '../App'
+import { populateFromSearchRing, populateFromParcel } from '../scipSchema'
 
 interface ParcelSearchProps {
   onResults: (parcels: Parcel[]) => void
@@ -57,6 +58,14 @@ export default function ParcelSearch({ onResults, loading, setLoading }: ParcelS
     setLoading(true)
     setError('')
 
+    // Auto-populate SCIP search ring data
+    populateFromSearchRing({
+      siteName: `${county} Search Ring`,
+      latitude: parseFloat(lat),
+      longitude: parseFloat(lon),
+      radius: parseFloat(radius)
+    })
+
     try {
       const response = await fetch('/api/parcels/coordinate-search', {
         method: 'POST',
@@ -72,6 +81,11 @@ export default function ParcelSearch({ onResults, loading, setLoading }: ParcelS
       const parcels = data.results || []
       setResults(parcels)
       onResults(parcels)
+
+      // Auto-populate SCIP site info from first parcel
+      if (parcels.length > 0) {
+        populateFromParcel(parcels[0])
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Coordinate search failed')
     } finally {
