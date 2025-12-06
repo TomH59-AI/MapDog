@@ -225,11 +225,17 @@ app.get('/', (c) => {
             >
               <i class="fas fa-history mr-2"></i>Search History
             </button>
-            <button 
+            <button
               onclick="exportResults()"
               class="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition-all"
             >
-              <i class="fas fa-download mr-2"></i>Export CSV
+              <i class="fas fa-file-csv mr-2"></i>Export CSV
+            </button>
+            <button
+              onclick="exportGeoJSON()"
+              class="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-lg transition-all"
+            >
+              <i class="fas fa-globe mr-2"></i>Export GeoJSON
             </button>
           </div>
 

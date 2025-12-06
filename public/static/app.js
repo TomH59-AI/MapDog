@@ -798,6 +798,62 @@ function exportResults() {
   alert(`✅ Exported ${currentResults.length} parcels to CSV`)
 }
 
+// Export current results to GeoJSON
+function exportGeoJSON() {
+  if (!currentResults || currentResults.length === 0) {
+    alert('No results to export. Please search first.')
+    return
+  }
+
+  // Build GeoJSON FeatureCollection
+  const features = currentResults.map(parcel => {
+    // Extract geometry if available
+    const geometry = parcel.geometry || null
+
+    // Build properties from parcel data
+    const properties = {
+      pin: parcel.identifiers?.pin || '',
+      parcelid: parcel.parcelid || '',
+      county: parcel.meta?.county || '',
+      owner: parcel.owner?.primary_name || '',
+      address: parcel.site?.address || parcel.owner?.address_line1 || '',
+      city: parcel.site?.city || parcel.owner?.city || '',
+      zipcode: parcel.site?.zipcode || parcel.owner?.zipcode || '',
+      acres_gis: parcel.land?.acres_gis || null,
+      acres_deed: parcel.land?.acres_deed || null,
+      zoning: parcel.land?.zoning || '',
+      land_use: parcel.land?.land_use?.luse_desc || '',
+      market_value: parcel.valuation?.market?.total || null,
+      assessed_value: parcel.valuation?.assessed_total || null,
+      year_built: parcel.building?.year_built_actual || null,
+      property_link: parcel.meta?.pa_pin_link || ''
+    }
+
+    return {
+      type: 'Feature',
+      properties,
+      geometry
+    }
+  })
+
+  const geojson = {
+    type: 'FeatureCollection',
+    features
+  }
+
+  // Download
+  const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/geo+json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `mapdog-parcels-${Date.now()}.geojson`
+  a.click()
+  URL.revokeObjectURL(url)
+
+  const withGeometry = features.filter(f => f.geometry).length
+  alert(`✅ Exported ${currentResults.length} parcels to GeoJSON\n(${withGeometry} with geometry)`)
+}
+
 // Load statistics
 async function loadStats() {
   try {
