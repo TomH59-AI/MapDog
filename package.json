@@ -19,15 +19,25 @@
     "git:commit": "git add . && git commit -m"
   },
   "dependencies": {
-    "hono": "^4.10.0"
+    "@types/leaflet": "^1.9.21",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "hono": "^4.10.0",
+    "leaflet": "^1.9.4",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "react-leaflet": "^5.0.0",
+    "recharts": "^3.5.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "4.20250705.0",
-    "@hono/vite-cloudflare-pages": "^0.4.2",
     "@hono/vite-build": "^1.2.0",
+    "@hono/vite-cloudflare-pages": "^0.4.2",
     "@hono/vite-dev-server": "^0.18.2",
+    "@vitejs/plugin-react": "^5.1.1",
+    "typescript": "^5.0.0",
     "vite": "^6.3.5",
-    "wrangler": "^4.4.0",
-    "typescript": "^5.0.0"
+    "wrangler": "^4.4.0"
   }
 }
