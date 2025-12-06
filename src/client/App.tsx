@@ -18,7 +18,12 @@ export interface Parcel {
 }
 
 type Tab = 'search' | 'map' | 'analytics'
-type StateFilter = 'NC' | 'GA' | 'ALL'
+type StateFilter = 'NC' | 'GA' | 'FL' | 'ALL'
+
+// County lists for state detection
+const NC_COUNTIES = ['WAKE', 'MECKLENBURG', 'GUILFORD', 'DURHAM', 'FORSYTH', 'CUMBERLAND', 'BUNCOMBE', 'GASTON', 'NEW HANOVER', 'UNION', 'CABARRUS', 'ONSLOW', 'PITT', 'CATAWBA', 'DAVIDSON', 'ALAMANCE', 'ROWAN', 'RANDOLPH', 'JOHNSTON', 'CLEVELAND']
+const GA_COUNTIES = ['FULTON', 'GWINNETT', 'COBB', 'DEKALB', 'CHATHAM', 'RICHMOND', 'MUSCOGEE', 'CHEROKEE', 'HENRY', 'FORSYTH', 'HALL', 'CLAYTON', 'BIBB', 'COLUMBIA', 'COWETA', 'PAULDING', 'DOUGLAS', 'BARTOW', 'CARROLL', 'FAYETTE']
+const FL_COUNTIES = ['MIAMI-DADE', 'BROWARD', 'PALM BEACH', 'HILLSBOROUGH', 'ORANGE', 'PINELLAS', 'DUVAL', 'LEE', 'POLK', 'BREVARD', 'VOLUSIA', 'PASCO', 'SEMINOLE', 'SARASOTA', 'MANATEE', 'COLLIER', 'MARION', 'LAKE', 'OSCEOLA', 'ESCAMBIA', 'ALACHUA', 'ST. LUCIE', 'LEON', 'CLAY', 'ST. JOHNS', 'OKALOOSA', 'SANTA ROSA', 'BAY', 'HERNANDO', 'CHARLOTTE']
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('search')
@@ -30,15 +35,15 @@ export default function App() {
   const filteredParcels = parcels.filter(p => {
     if (stateFilter === 'ALL') return true
     const county = p.meta?.county?.toUpperCase() || ''
-    // NC and GA county detection (simplified - expand as needed)
+
     if (stateFilter === 'NC') {
-      return county.includes('WAKE') || county.includes('MECKLENBURG') || county.includes('GUILFORD') ||
-             county.includes('DURHAM') || county.includes('FORSYTH') || county.includes('CUMBERLAND') ||
-             county.includes('BUNCOMBE') || county.includes('GASTON') || county.includes('NC')
+      return NC_COUNTIES.some(c => county.includes(c)) || county.includes('NC')
     }
     if (stateFilter === 'GA') {
-      return county.includes('FULTON') || county.includes('GWINNETT') || county.includes('COBB') ||
-             county.includes('DEKALB') || county.includes('CHATHAM') || county.includes('GA')
+      return GA_COUNTIES.some(c => county.includes(c)) || county.includes('GA')
+    }
+    if (stateFilter === 'FL') {
+      return FL_COUNTIES.some(c => county.includes(c)) || county.includes('FL')
     }
     return true
   })
