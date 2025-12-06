@@ -6,6 +6,9 @@
  */
 
 export const scipData = {
+  // Metadata
+  lastUpdated: '',
+
   // SITE ACQUISITION
   agent: {
     name: 'Tom Hodges',
@@ -223,6 +226,11 @@ export function getField(path: string): string {
   return value ?? ''
 }
 
+// Update lastUpdated timestamp
+function touch(): void {
+  scipData.lastUpdated = new Date().toISOString()
+}
+
 // Helper to set nested value by dot path
 export function setField(path: string, value: string): void {
   const parts = path.split('.')
@@ -231,6 +239,7 @@ export function setField(path: string, value: string): void {
     obj = obj[parts[i]]
   }
   obj[parts[parts.length - 1]] = value
+  touch()
 }
 
 // Populate site_info from parcel data
@@ -270,6 +279,8 @@ export function populateFromParcel(parcel: any): void {
   // Zoning
   scipData.zoning_overview.district = parcel.land?.zoning || ''
   scipData.zoning_overview.current_usage = parcel.land?.land_use?.luse_desc || ''
+
+  touch()
 }
 
 // Populate search_ring from coordinate search
@@ -283,6 +294,8 @@ export function populateFromSearchRing(data: {
   scipData.search_ring.latitude = data.latitude?.toString() || ''
   scipData.search_ring.longitude = data.longitude?.toString() || ''
   scipData.search_ring.search_radius = data.radius?.toString() || ''
+
+  touch()
 }
 
 // Reset to defaults
