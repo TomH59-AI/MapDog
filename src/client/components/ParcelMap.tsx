@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl } from 'react-l
 import type { Parcel } from '../App'
 import L from 'leaflet'
 import { FloodplainLayer, WetlandsLayer, ZoningLayer, AirportLayer } from '../layers'
+import scipData from '../scipSchema'
 
 // Fix Leaflet default marker icons
 import icon from 'leaflet/dist/images/marker-icon.png'
@@ -18,6 +19,39 @@ L.Marker.prototype.options.icon = DefaultIcon
 
 interface ParcelMapProps {
   parcels: Parcel[]
+}
+
+// Component to track base layer changes and update scipData
+function BaseLayerTracker() {
+  const map = useMap()
+
+  useEffect(() => {
+    const handleBaseLayerChange = (e: L.LayersControlEvent) => {
+      const layerName = e.name
+      // Clear both first
+      scipData.maps.aerial = ''
+      scipData.maps.topography = ''
+
+      if (layerName === 'Satellite') {
+        scipData.maps.aerial = 'Esri World Imagery'
+      } else if (layerName === 'Topo') {
+        scipData.maps.topography = 'OpenTopoMap'
+      } else if (layerName === 'OpenStreetMap') {
+        scipData.maps.aerial = 'OpenStreetMap Base'
+      }
+    }
+
+    map.on('baselayerchange', handleBaseLayerChange)
+
+    // Set initial value
+    scipData.maps.aerial = 'OpenStreetMap Base'
+
+    return () => {
+      map.off('baselayerchange', handleBaseLayerChange)
+    }
+  }, [map])
+
+  return null
 }
 
 // Component to fit bounds when parcels change
@@ -130,6 +164,15 @@ export default function ParcelMap({ parcels }: ParcelMapProps) {
       }))
   }
 
+  // Update scipData.maps.parcel when parcels are displayed
+  useEffect(() => {
+    if (layers.parcels && geojsonData.features.length > 0) {
+      scipData.maps.parcel = `${geojsonData.features.length} Parcels (MapWise Data)`
+    } else if (!layers.parcels) {
+      scipData.maps.parcel = ''
+    }
+  }, [layers.parcels, geojsonData.features.length])
+
   // Style for parcel polygons
   const parcelStyle = {
     fillColor: '#3b82f6',
@@ -211,6 +254,7 @@ export default function ParcelMap({ parcels }: ParcelMapProps) {
         )}
 
         <FitBounds parcels={parcels} />
+        <BaseLayerTracker />
       </MapContainer>
 
       {/* Custom Layer Control */}

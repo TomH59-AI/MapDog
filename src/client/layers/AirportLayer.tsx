@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { GeoJSON, Circle, Marker, Popup } from 'react-leaflet'
 import L from 'leaflet'
+import scipData from '../scipSchema'
 
 interface AirportLayerProps {
   visible?: boolean
@@ -83,6 +84,15 @@ export default function AirportLayer({ visible = true, showSurfaces = false }: A
       setLoading(false)
     })
   }, [visible, showSurfaces])
+
+  // Update scipData.maps.airport when layer is visible
+  useEffect(() => {
+    if (visible && airports.length > 0) {
+      scipData.maps.airport = 'FAA Airports with Part 77 Notification Zones'
+    } else if (!visible) {
+      scipData.maps.airport = ''
+    }
+  }, [visible, airports])
 
   if (!visible) return null
 

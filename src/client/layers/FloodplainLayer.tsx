@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { GeoJSON, useMap } from 'react-leaflet'
+import scipData from '../scipSchema'
 
 interface FloodplainLayerProps {
   visible?: boolean
@@ -47,6 +48,15 @@ export default function FloodplainLayer({ visible = true, opacity = 0.5 }: Flood
         setLoading(false)
       })
   }, [visible])
+
+  // Update scipData.maps.floodplain when layer is visible
+  useEffect(() => {
+    if (visible && data) {
+      scipData.maps.floodplain = 'FEMA NFHL Flood Zones'
+    } else if (!visible) {
+      scipData.maps.floodplain = ''
+    }
+  }, [visible, data])
 
   if (!visible || !data) return null
 

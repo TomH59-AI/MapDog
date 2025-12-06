@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { GeoJSON } from 'react-leaflet'
+import scipData from '../scipSchema'
 
 interface WetlandsLayerProps {
   visible?: boolean
@@ -43,6 +44,15 @@ export default function WetlandsLayer({ visible = true, opacity = 0.4 }: Wetland
         setLoading(false)
       })
   }, [visible])
+
+  // Update scipData.maps.wetlands when layer is visible
+  useEffect(() => {
+    if (visible && data) {
+      scipData.maps.wetlands = 'NWI/USFWS Wetlands'
+    } else if (!visible) {
+      scipData.maps.wetlands = ''
+    }
+  }, [visible, data])
 
   if (!visible || !data) return null
 

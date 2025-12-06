@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { GeoJSON } from 'react-leaflet'
+import scipData from '../scipSchema'
 
 interface ZoningLayerProps {
   visible?: boolean
@@ -84,6 +85,15 @@ export default function ZoningLayer({ visible = true, opacity = 0.35, county }: 
         setLoading(false)
       })
   }, [visible, county])
+
+  // Update scipData.maps.zoning when layer is visible
+  useEffect(() => {
+    if (visible && data) {
+      scipData.maps.zoning = county ? `${county} County Zoning` : 'County Zoning Districts'
+    } else if (!visible) {
+      scipData.maps.zoning = ''
+    }
+  }, [visible, data, county])
 
   if (!visible || !data) return null
 
