@@ -19,7 +19,8 @@
     "git:commit": "git add . && git commit -m"
   },
   "dependencies": {
-    "hono": "^4.10.0"
+    "hono": "^4.10.0",
+    "@notionhq/client": "^2.2.15"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "4.20250705.0",

@@ -1,6 +1,7 @@
 // MapDog - Site Acquisition Parcel Search Frontend
 let currentResults = []
-let currentMode = 'county' // 'county' or 'bulk'
+let currentMode = 'county' // 'county', 'coordinate', 'bulk', or 'scip'
+let currentSCIPProject = null
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,24 +16,28 @@ document.addEventListener('DOMContentLoaded', () => {
 // Switch between search modes
 function switchMode(mode) {
   currentMode = mode
-  
+
   const countySection = document.getElementById('countyInput').parentElement.parentElement
   const coordinateSection = document.getElementById('coordinateSearchSection')
   const bulkSection = document.getElementById('bulkSearchSection')
+  const scipSection = document.getElementById('scipSearchSection')
   const countyBtn = document.getElementById('countyModeBtn')
   const coordinateBtn = document.getElementById('coordinateModeBtn')
   const bulkBtn = document.getElementById('bulkModeBtn')
-  
+  const scipBtn = document.getElementById('scipModeBtn')
+
   // Hide all sections
   countySection.classList.add('hidden')
   coordinateSection.classList.add('hidden')
   bulkSection.classList.add('hidden')
-  
+  scipSection.classList.add('hidden')
+
   // Reset button styles
   countyBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
   coordinateBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
   bulkBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
-  
+  scipBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
+
   // Show selected section and highlight button
   if (mode === 'county') {
     countySection.classList.remove('hidden')
@@ -43,8 +48,11 @@ function switchMode(mode) {
   } else if (mode === 'bulk') {
     bulkSection.classList.remove('hidden')
     bulkBtn.className = 'px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg transition-all'
+  } else if (mode === 'scip') {
+    scipSection.classList.remove('hidden')
+    scipBtn.className = 'px-4 py-2 bg-green-600 text-white font-semibold rounded-lg transition-all'
   }
-  
+
   // Clear results when switching
   document.getElementById('results').innerHTML = ''
 }
@@ -830,10 +838,10 @@ function showLoading(show, message = 'Fetching parcels...') {
 // Show error message
 function showError(message) {
   const resultsDiv = document.getElementById('results')
-  
+
   // Parse message for better display
   const lines = message.split('\n').filter(line => line.trim())
-  
+
   resultsDiv.innerHTML = `
     <div class="bg-red-100 border-2 border-red-400 rounded-lg p-6 text-center">
       <i class="fas fa-exclamation-triangle text-red-600 text-4xl mb-3"></i>
@@ -843,12 +851,428 @@ function showError(message) {
         }
         return `<p class="text-red-800 font-semibold ${i > 0 ? 'mt-2' : ''}">${line}</p>`
       }).join('')}
-      <button 
-        onclick="document.getElementById('results').innerHTML=''" 
+      <button
+        onclick="document.getElementById('results').innerHTML=''"
         class="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
       >
         Dismiss
       </button>
     </div>
   `
+}
+
+// =====================================================
+// SCIP Auto-Filler Functions
+// =====================================================
+
+// Generate SCIP candidates
+async function generateSCIP() {
+  const projectName = document.getElementById('scipProjectName').value.trim()
+  const county = document.getElementById('scipCounty').value.trim().toUpperCase()
+  const carrier = document.getElementById('scipCarrier').value.trim()
+  const lat = document.getElementById('scipLat').value.trim()
+  const lon = document.getElementById('scipLon').value.trim()
+  const radius = document.getElementById('scipRadius').value.trim()
+  const rfEngineerName = document.getElementById('scipRfEngineer').value.trim()
+  const projectNotes = document.getElementById('scipNotes').value.trim()
+
+  // Validate required inputs
+  if (!projectName) {
+    alert('⚠️ Please enter a project name\n\nExample: Orlando Tower Site 1')
+    return
+  }
+
+  if (!county) {
+    alert('⚠️ Please enter a county name\n\nExample: ORANGE, ALACHUA')
+    return
+  }
+
+  if (!lat || !lon) {
+    alert('⚠️ Please enter latitude and longitude\n\nGet these from your RF Engineer')
+    return
+  }
+
+  if (!radius || parseFloat(radius) <= 0) {
+    alert('⚠️ Please enter a valid search radius\n\nRecommended: 0.5 miles for cell tower sites')
+    return
+  }
+
+  showLoading(true, `🔍 Analyzing properties within ${radius} miles...\n⚙️ Generating SCIP candidates...\n📊 Scoring and ranking sites...`)
+
+  try {
+    const response = await fetch('/api/scip/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectName,
+        searchRingCenterLat: lat,
+        searchRingCenterLon: lon,
+        searchRadiusMiles: radius,
+        county,
+        rfEngineerName,
+        carrier,
+        projectNotes
+      })
+    })
+
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error + (data.hint ? '\n\n💡 ' + data.hint : ''))
+    }
+
+    currentSCIPProject = data
+    displaySCIPResults(data)
+    loadStats()
+
+  } catch (error) {
+    showError(error.message)
+  } finally {
+    showLoading(false)
+  }
+}
+
+// Display SCIP results
+function displaySCIPResults(data) {
+  const resultsDiv = document.getElementById('results')
+  const candidates = data.candidates || []
+
+  if (candidates.length === 0) {
+    resultsDiv.innerHTML = `
+      <div class="text-center py-8 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+        <i class="fas fa-search text-yellow-600 text-4xl mb-3"></i>
+        <p class="text-lg font-semibold text-gray-800">No suitable candidates found</p>
+        <p class="text-sm text-gray-600 mt-2">${data.message || 'Try adjusting your search radius or county.'}</p>
+      </div>
+    `
+    return
+  }
+
+  resultsDiv.innerHTML = `
+    <div class="mb-6 bg-green-50 border-2 border-green-400 rounded-lg p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-2xl font-bold text-green-800">
+          <i class="fas fa-check-circle mr-2"></i>
+          SCIP Generated Successfully!
+        </h3>
+        <span class="text-sm bg-green-200 px-3 py-1 rounded-full font-semibold">
+          Project ID: ${data.projectId}
+        </span>
+      </div>
+      <p class="text-gray-700">
+        <i class="fas fa-info-circle text-green-600 mr-2"></i>
+        Found <strong>${candidates.length} top candidates</strong> ranked by suitability score.
+        ${data.message}
+      </p>
+    </div>
+
+    <div class="grid gap-6">
+      ${candidates.map((candidate, index) => renderSCIPCard(candidate, index + 1, data.projectId)).join('')}
+    </div>
+  `
+}
+
+// Render individual SCIP candidate card
+function renderSCIPCard(candidate, rank, projectId) {
+  const scoreColor = candidate.overallScore >= 70 ? 'green' :
+                     candidate.overallScore >= 50 ? 'yellow' : 'orange'
+
+  return `
+    <div class="bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden hover:shadow-2xl transition-all">
+      <div class="bg-gradient-to-r from-green-600 to-green-700 p-4 text-white">
+        <div class="flex justify-between items-start">
+          <div>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="bg-white text-green-700 font-bold px-3 py-1 rounded-full text-sm">
+                #${rank} Candidate
+              </span>
+              <span class="bg-${scoreColor}-200 text-${scoreColor}-800 font-bold px-3 py-1 rounded-full text-sm">
+                Score: ${candidate.overallScore}/100
+              </span>
+            </div>
+            <h3 class="text-2xl font-bold">${candidate.siteName || 'Untitled Site'}</h3>
+            <p class="text-green-100 text-sm">${candidate.siteAddress || 'Address unavailable'}</p>
+          </div>
+          <i class="fas fa-tower-cell text-4xl opacity-30"></i>
+        </div>
+      </div>
+
+      <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Property Information -->
+        <div class="space-y-2">
+          <h4 class="font-bold text-gray-700 border-b pb-2">
+            <i class="fas fa-home text-blue-600 mr-2"></i>Property Info
+          </h4>
+          <div class="text-sm space-y-1">
+            <p><strong>Owner:</strong> ${candidate.ownerName || 'Unknown'}</p>
+            <p><strong>Parcel:</strong> ${candidate.parcelNumber || 'Unknown'}</p>
+            <p><strong>Size:</strong> ${candidate.parcelAcres || '0'} acres</p>
+            <p><strong>Zoning:</strong> ${candidate.zoningDesignation || 'Unknown'}</p>
+            <p><strong>Land Use:</strong> ${candidate.landUse || 'Unknown'}</p>
+          </div>
+        </div>
+
+        <!-- Location & Coordinates -->
+        <div class="space-y-2">
+          <h4 class="font-bold text-gray-700 border-b pb-2">
+            <i class="fas fa-map-marker-alt text-red-600 mr-2"></i>Location
+          </h4>
+          <div class="text-sm space-y-1">
+            <p><strong>County:</strong> ${candidate.siteCounty || 'Unknown'}</p>
+            ${candidate.latitude && candidate.longitude ? `
+              <p><strong>Coordinates:</strong><br/>
+                Lat: ${candidate.latitude.toFixed(6)}<br/>
+                Lon: ${candidate.longitude.toFixed(6)}
+              </p>
+            ` : '<p class="text-gray-500">Coordinates unavailable</p>'}
+            ${candidate.distanceFromCenter ? `
+              <p><strong>Distance from center:</strong> ${candidate.distanceFromCenter.toFixed(2)} miles</p>
+            ` : ''}
+          </div>
+        </div>
+
+        <!-- Environmental -->
+        <div class="space-y-2">
+          <h4 class="font-bold text-gray-700 border-b pb-2">
+            <i class="fas fa-leaf text-green-600 mr-2"></i>Environmental
+          </h4>
+          <div class="text-sm space-y-1">
+            <p><strong>Flood Zone:</strong> ${candidate.floodZone || 'Unknown'}</p>
+            <p><strong>Wetlands:</strong> ${candidate.wetlandsPresent ? 'Yes ⚠️' : 'No'}</p>
+            ${candidate.elevationFeet ? `<p><strong>Elevation:</strong> ${Math.round(candidate.elevationFeet)} ft</p>` : ''}
+            ${candidate.environmentalConcerns ? `
+              <p class="text-yellow-700 bg-yellow-50 p-2 rounded mt-2">
+                <i class="fas fa-exclamation-triangle mr-1"></i>
+                ${candidate.environmentalConcerns}
+              </p>
+            ` : ''}
+          </div>
+        </div>
+
+        <!-- Financial -->
+        <div class="space-y-2">
+          <h4 class="font-bold text-gray-700 border-b pb-2">
+            <i class="fas fa-dollar-sign text-green-600 mr-2"></i>Financial
+          </h4>
+          <div class="text-sm space-y-1">
+            <p><strong>Market Value:</strong> $${(candidate.marketValue || 0).toLocaleString()}</p>
+            <p><strong>Assessed Value:</strong> $${(candidate.assessedValue || 0).toLocaleString()}</p>
+            <p><strong>Est. Lease Rate:</strong> ${candidate.estimatedLeaseRate || 'TBD'}</p>
+          </div>
+        </div>
+
+        <!-- Score Breakdown -->
+        ${candidate.scoreBreakdown ? `
+          <div class="col-span-2 space-y-2">
+            <h4 class="font-bold text-gray-700 border-b pb-2">
+              <i class="fas fa-chart-bar text-purple-600 mr-2"></i>Score Breakdown
+            </h4>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+              ${Object.entries(candidate.scoreBreakdown).map(([key, value]) => `
+                <div class="bg-gray-50 p-2 rounded text-center">
+                  <div class="font-semibold capitalize">${key}</div>
+                  <div class="text-lg text-blue-600">${value}</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+      </div>
+
+      <!-- Actions -->
+      <div class="p-4 bg-gray-50 border-t flex gap-2 flex-wrap">
+        <button
+          onclick="viewFullSCIP(${rank - 1})"
+          class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-all"
+        >
+          <i class="fas fa-file-alt mr-2"></i>View Full SCIP
+        </button>
+        <button
+          onclick="syncToNotion(${projectId}, ${rank})"
+          class="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-all"
+        >
+          <i class="fas fa-upload mr-2"></i>Sync to Notion
+        </button>
+        <button
+          onclick="exportSCIPPDF(${rank - 1})"
+          class="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition-all"
+        >
+          <i class="fas fa-download mr-2"></i>Export PDF
+        </button>
+      </div>
+    </div>
+  `
+}
+
+// View full SCIP details
+function viewFullSCIP(index) {
+  if (!currentSCIPProject || !currentSCIPProject.candidates[index]) {
+    alert('SCIP data not available')
+    return
+  }
+
+  const candidate = currentSCIPProject.candidates[index]
+  const scipWindow = window.open('', '_blank', 'width=1200,height=800')
+
+  scipWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>SCIP - ${candidate.siteName}</title>
+      <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    </head>
+    <body class="bg-gray-100 p-8">
+      <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-8">
+        <h1 class="text-3xl font-bold text-center mb-6 text-green-700">
+          Site Candidate Information Package (SCIP)
+        </h1>
+
+        ${renderFullSCIPContent(candidate)}
+
+        <div class="mt-8 text-center">
+          <button onclick="window.print()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
+            <i class="fas fa-print mr-2"></i>Print SCIP
+          </button>
+        </div>
+      </div>
+    </body>
+    </html>
+  `)
+
+  scipWindow.document.close()
+}
+
+// Render full SCIP content
+function renderFullSCIPContent(candidate) {
+  return `
+    <div class="space-y-6">
+      <!-- Site Identification -->
+      <section>
+        <h2 class="text-2xl font-bold border-b-2 border-green-600 pb-2 mb-4">
+          📍 Site Identification
+        </h2>
+        <table class="w-full text-sm">
+          <tr><td class="font-semibold py-1">Site Name:</td><td>${candidate.siteName || 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">Address:</td><td>${candidate.siteAddress || 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">City:</td><td>${candidate.siteCity || 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">County:</td><td>${candidate.siteCounty || 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">State:</td><td>${candidate.siteState || 'FL'}</td></tr>
+          <tr><td class="font-semibold py-1">ZIP Code:</td><td>${candidate.siteZip || 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">Latitude:</td><td>${candidate.latitude || 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">Longitude:</td><td>${candidate.longitude || 'N/A'}</td></tr>
+        </table>
+      </section>
+
+      <!-- Property Information -->
+      <section>
+        <h2 class="text-2xl font-bold border-b-2 border-green-600 pb-2 mb-4">
+          🏠 Property Information
+        </h2>
+        <table class="w-full text-sm">
+          <tr><td class="font-semibold py-1">Owner Name:</td><td>${candidate.ownerName || 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">Owner Address:</td><td>${candidate.ownerAddress || 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">Parcel Number:</td><td>${candidate.parcelNumber || 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">Parcel Acres:</td><td>${candidate.parcelAcres || 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">Lot Size:</td><td>${candidate.lotSize || 'N/A'}</td></tr>
+        </table>
+      </section>
+
+      <!-- Zoning & Land Use -->
+      <section>
+        <h2 class="text-2xl font-bold border-b-2 border-green-600 pb-2 mb-4">
+          🏛️ Zoning & Land Use
+        </h2>
+        <table class="w-full text-sm">
+          <tr><td class="font-semibold py-1">Zoning Designation:</td><td>${candidate.zoningDesignation || 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">Land Use:</td><td>${candidate.landUse || 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">Current Use:</td><td>${candidate.currentUse || 'N/A'}</td></tr>
+        </table>
+      </section>
+
+      <!-- Environmental Concerns -->
+      <section>
+        <h2 class="text-2xl font-bold border-b-2 border-green-600 pb-2 mb-4">
+          🌿 Environmental Concerns
+        </h2>
+        <table class="w-full text-sm">
+          <tr><td class="font-semibold py-1">Wetlands Present:</td><td>${candidate.wetlandsPresent ? 'Yes' : 'No'}</td></tr>
+          <tr><td class="font-semibold py-1">Flood Zone:</td><td>${candidate.floodZone || 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">Historical Site:</td><td>${candidate.historicalSite ? 'Yes' : 'No'}</td></tr>
+          <tr><td class="font-semibold py-1">Concerns:</td><td>${candidate.environmentalConcerns || 'None identified'}</td></tr>
+        </table>
+      </section>
+
+      <!-- RF Engineering Data -->
+      <section>
+        <h2 class="text-2xl font-bold border-b-2 border-green-600 pb-2 mb-4">
+          📡 RF Engineering Data
+        </h2>
+        <table class="w-full text-sm">
+          <tr><td class="font-semibold py-1">Elevation (ft):</td><td>${candidate.elevationFeet ? Math.round(candidate.elevationFeet) : 'N/A'}</td></tr>
+          <tr><td class="font-semibold py-1">Terrain Type:</td><td>${candidate.terrainType || 'Unknown'}</td></tr>
+          <tr><td class="font-semibold py-1">Line of Sight:</td><td>${candidate.lineOfSight || 'To be determined'}</td></tr>
+        </table>
+      </section>
+
+      <!-- Financial Information -->
+      <section>
+        <h2 class="text-2xl font-bold border-b-2 border-green-600 pb-2 mb-4">
+          💰 Financial Information
+        </h2>
+        <table class="w-full text-sm">
+          <tr><td class="font-semibold py-1">Assessed Value:</td><td>$${(candidate.assessedValue || 0).toLocaleString()}</td></tr>
+          <tr><td class="font-semibold py-1">Market Value:</td><td>$${(candidate.marketValue || 0).toLocaleString()}</td></tr>
+          <tr><td class="font-semibold py-1">Estimated Lease Rate:</td><td>${candidate.estimatedLeaseRate || 'TBD'}</td></tr>
+        </table>
+      </section>
+
+      <!-- Site Score -->
+      <section>
+        <h2 class="text-2xl font-bold border-b-2 border-green-600 pb-2 mb-4">
+          ⭐ Site Suitability Score
+        </h2>
+        <div class="text-center text-4xl font-bold text-green-600 my-4">
+          ${candidate.overallScore}/100
+        </div>
+        ${candidate.scoreBreakdown ? `
+          <div class="grid grid-cols-4 gap-2 text-sm text-center">
+            ${Object.entries(candidate.scoreBreakdown).map(([key, value]) => `
+              <div class="bg-gray-100 p-2 rounded">
+                <div class="font-semibold capitalize">${key}</div>
+                <div class="text-lg">${value}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+      </section>
+    </div>
+  `
+}
+
+// Sync SCIP to Notion
+async function syncToNotion(projectId, candidateRank) {
+  if (confirm(`Sync Candidate #${candidateRank} to Notion?\n\nThis will create a new page in your Notion database.`)) {
+    alert('Notion sync coming soon! Configure NOTION_API_KEY and NOTION_DATABASE_ID environment variables.')
+    // Implementation would call /api/scip/sync-notion/:candidateId
+  }
+}
+
+// Export SCIP as PDF (placeholder)
+function exportSCIPPDF(index) {
+  alert('PDF export coming soon! For now, use the "View Full SCIP" button and print to PDF.')
+}
+
+// Clear SCIP search form
+function clearSCIPSearch() {
+  document.getElementById('scipProjectName').value = ''
+  document.getElementById('scipCounty').value = ''
+  document.getElementById('scipCarrier').value = ''
+  document.getElementById('scipLat').value = ''
+  document.getElementById('scipLon').value = ''
+  document.getElementById('scipRadius').value = '0.5'
+  document.getElementById('scipRfEngineer').value = ''
+  document.getElementById('scipNotes').value = ''
+  document.getElementById('results').innerHTML = ''
+  currentSCIPProject = null
 }

@@ -1,10 +1,14 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { renderer } from './renderer'
+import { generateSCIPData, scoreProperty, enrichParcelData } from './scip-service'
+import { syncSCIPToNotion, createFullSCIPPage, verifyNotionDatabase } from './notion-service'
 
 type Bindings = {
   DB: D1Database
   MAPWISE_API_KEY: string
+  NOTION_API_KEY?: string
+  NOTION_DATABASE_ID?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -66,27 +70,34 @@ app.get('/', (c) => {
           </div>
 
           {/* Mode Toggle */}
-          <div class="flex gap-2 mb-6 border-b-2 border-gray-200 pb-2">
-            <button 
+          <div class="flex gap-2 mb-6 border-b-2 border-gray-200 pb-2 flex-wrap">
+            <button
               id="countyModeBtn"
               onclick="switchMode('county')"
               class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg transition-all"
             >
               <i class="fas fa-map-marker-alt mr-2"></i>County Search
             </button>
-            <button 
+            <button
               id="coordinateModeBtn"
               onclick="switchMode('coordinate')"
               class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
             >
               <i class="fas fa-crosshairs mr-2"></i>RF Coordinates
             </button>
-            <button 
+            <button
               id="bulkModeBtn"
               onclick="switchMode('bulk')"
               class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
             >
               <i class="fas fa-layer-group mr-2"></i>Bulk PINs
+            </button>
+            <button
+              id="scipModeBtn"
+              onclick="switchMode('scip')"
+              class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
+            >
+              <i class="fas fa-file-alt mr-2"></i>SCIP Auto-Filler
             </button>
           </div>
 
@@ -208,6 +219,103 @@ app.get('/', (c) => {
             <p class="text-xs text-gray-500 mt-2">
               <i class="fas fa-info-circle mr-1"></i>
               Paste PINs from your search ring tool • Max 50 PINs per search
+            </p>
+          </div>
+
+          {/* SCIP Auto-Filler (Hidden by default) */}
+          <div id="scipSearchSection" class="hidden mb-6">
+            <label class="block text-gray-700 text-lg font-semibold mb-3">
+              <i class="fas fa-file-alt text-green-600 mr-2"></i>
+              SCIP Auto-Filler - Site Candidate Information Package
+            </label>
+            <p class="text-sm text-gray-600 mb-4">
+              Generate comprehensive SCIP reports for cell tower site candidates. Enter coordinates and we'll find the best properties, score them, and auto-fill all SCIP fields.
+            </p>
+
+            <div class="grid grid-cols-2 gap-3 mb-3">
+              <input
+                type="text"
+                id="scipProjectName"
+                placeholder="Project/Site Name (e.g., Orlando Tower Site 1)"
+                class="col-span-2 px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+              />
+              <input
+                type="text"
+                id="scipCounty"
+                placeholder="County (e.g., ORANGE)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+              />
+              <input
+                type="text"
+                id="scipCarrier"
+                placeholder="Carrier (optional)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+              />
+            </div>
+
+            <div class="grid grid-cols-3 gap-3 mb-3">
+              <input
+                type="text"
+                id="scipLat"
+                placeholder="Latitude (e.g., 28.5383)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+              />
+              <input
+                type="text"
+                id="scipLon"
+                placeholder="Longitude (e.g., -81.3792)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+              />
+              <div class="flex gap-2">
+                <input
+                  type="number"
+                  id="scipRadius"
+                  placeholder="Radius"
+                  value="0.5"
+                  min="0.1"
+                  max="5"
+                  step="0.1"
+                  class="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                />
+                <span class="px-2 py-2 text-gray-600 font-semibold">miles</span>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <input
+                type="text"
+                id="scipRfEngineer"
+                placeholder="RF Engineer Name (optional)"
+                class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+              />
+            </div>
+
+            <div class="mb-3">
+              <textarea
+                id="scipNotes"
+                placeholder="Project Notes (optional)"
+                rows="3"
+                class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none text-sm"
+              ></textarea>
+            </div>
+
+            <div class="flex gap-3">
+              <button
+                onclick="generateSCIP()"
+                class="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                <i class="fas fa-magic mr-2"></i>Generate SCIP Candidates
+              </button>
+              <button
+                onclick="clearSCIPSearch()"
+                class="px-6 py-3 bg-gray-400 hover:bg-gray-500 text-white font-semibold rounded-lg transition-all"
+              >
+                <i class="fas fa-times mr-2"></i>Clear
+              </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">
+              <i class="fas fa-info-circle mr-1"></i>
+              Finds 3-4 best properties within search ring • Auto-fills all SCIP fields • Syncs to Notion
             </p>
           </div>
 
@@ -697,6 +805,350 @@ app.get('/api/stats', async (c) => {
       savedParcels: 0,
       lastCounty: 'N/A'
     })
+  }
+})
+
+// =====================================================
+// SCIP (Site Candidate Information Package) API Routes
+// =====================================================
+
+// API: Create SCIP project and generate candidates
+app.post('/api/scip/generate', async (c) => {
+  try {
+    const {
+      projectName,
+      searchRingCenterLat,
+      searchRingCenterLon,
+      searchRadiusMiles,
+      county,
+      rfEngineerName,
+      carrier,
+      projectNotes
+    } = await c.req.json()
+
+    // Validate inputs
+    if (!projectName || !searchRingCenterLat || !searchRingCenterLon || !county) {
+      return c.json({
+        error: 'Missing required parameters',
+        hint: 'Provide projectName, searchRingCenterLat, searchRingCenterLon, and county'
+      }, 400)
+    }
+
+    const lat = parseFloat(searchRingCenterLat)
+    const lon = parseFloat(searchRingCenterLon)
+    const radius = parseFloat(searchRadiusMiles || '0.5')
+
+    if (isNaN(lat) || isNaN(lon) || isNaN(radius)) {
+      return c.json({
+        error: 'Invalid coordinates or radius',
+        hint: 'Coordinates and radius must be valid numbers'
+      }, 400)
+    }
+
+    // Validate coordinate ranges
+    if (lat < -90 || lat > 90) {
+      return c.json({ error: 'Latitude must be between -90 and 90' }, 400)
+    }
+    if (lon < -180 || lon > 180) {
+      return c.json({ error: 'Longitude must be between -180 and 180' }, 400)
+    }
+
+    const countyClean = county.trim().toUpperCase()
+    if (!/^[A-Z\s\-]+$/.test(countyClean)) {
+      return c.json({
+        error: 'Invalid county name format',
+        hint: 'County name should contain only letters, spaces, and hyphens'
+      }, 400)
+    }
+
+    // Create SCIP project in database
+    const projectResult = await c.env.DB.prepare(`
+      INSERT INTO scip_projects (
+        project_name, search_ring_center_lat, search_ring_center_lon,
+        search_radius_miles, county, rf_engineer_name, carrier, project_notes, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      projectName,
+      lat,
+      lon,
+      radius,
+      countyClean,
+      rfEngineerName || null,
+      carrier || null,
+      projectNotes || null,
+      'generating'
+    ).run()
+
+    const projectId = projectResult.meta.last_row_id
+
+    // Fetch parcels from MapWise API within the search area
+    const apiKey = c.env.MAPWISE_API_KEY || 'DEMO_KEY'
+    const response = await fetch(
+      `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=100`,
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    )
+
+    if (!response.ok) {
+      return c.json({
+        error: 'Failed to fetch parcels from MapWise',
+        statusCode: response.status
+      }, response.status)
+    }
+
+    const data = await response.json()
+    const parcels = data.data || []
+
+    if (parcels.length === 0) {
+      await c.env.DB.prepare('UPDATE scip_projects SET status = ? WHERE id = ?')
+        .bind('no_candidates', projectId).run()
+      return c.json({
+        success: true,
+        projectId,
+        message: 'No parcels found in the specified county',
+        candidates: []
+      })
+    }
+
+    // Generate SCIP data for each parcel and score them
+    const candidates = []
+    for (const parcel of parcels) {
+      try {
+        const scipData = await generateSCIPData(parcel, {
+          projectName,
+          searchRingCenterLat: lat,
+          searchRingCenterLon: lon,
+          searchRadiusMiles: radius,
+          county: countyClean,
+          rfEngineerName,
+          carrier,
+          projectNotes
+        })
+
+        candidates.push(scipData)
+
+        // Log data source
+        await c.env.DB.prepare(`
+          INSERT INTO scip_generation_log (candidate_id, data_source, api_endpoint, response_status, data_retrieved)
+          VALUES (?, ?, ?, ?, ?)
+        `).bind(
+          0, // Will update after candidate is created
+          'mapwise',
+          'parcels?searchCounty=' + countyClean,
+          200,
+          'Parcel data retrieved'
+        ).run()
+
+      } catch (error) {
+        console.error('Error generating SCIP for parcel:', error)
+      }
+    }
+
+    // Sort candidates by score (highest first)
+    candidates.sort((a, b) => b.overallScore - a.overallScore)
+
+    // Take top 3-4 candidates
+    const topCandidates = candidates.slice(0, 4)
+
+    // Save top candidates to database
+    for (let i = 0; i < topCandidates.length; i++) {
+      const candidate = topCandidates[i]
+      try {
+        await c.env.DB.prepare(`
+          INSERT INTO scip_candidates (
+            project_id, parcel_id, candidate_rank, site_name, site_address, site_city,
+            site_state, site_zip, site_county, latitude, longitude, owner_name, owner_address,
+            parcel_number, parcel_acres, lot_size, zoning_designation, land_use, current_use,
+            flood_zone, elevation_feet, assessed_value, market_value, estimated_lease_rate,
+            aerial_image_url, street_view_url, topo_map_url, overall_score, score_breakdown,
+            mapwise_data, status, wetlands_present, environmental_concerns
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          projectId,
+          candidate.parcelNumber || `UNKNOWN-${i}`,
+          i + 1,
+          candidate.siteName,
+          candidate.siteAddress,
+          candidate.siteCity,
+          candidate.siteState,
+          candidate.siteZip,
+          candidate.siteCounty,
+          candidate.latitude,
+          candidate.longitude,
+          candidate.ownerName,
+          candidate.ownerAddress,
+          candidate.parcelNumber,
+          candidate.parcelAcres,
+          candidate.lotSize,
+          candidate.zoningDesignation,
+          candidate.landUse,
+          candidate.currentUse,
+          candidate.floodZone,
+          candidate.elevationFeet,
+          candidate.assessedValue,
+          candidate.marketValue,
+          candidate.estimatedLeaseRate,
+          candidate.aerialImageUrl,
+          candidate.streetViewUrl,
+          candidate.topoMapUrl,
+          candidate.overallScore,
+          JSON.stringify(candidate.scoreBreakdown),
+          candidate.mapwiseData,
+          'candidate',
+          candidate.wetlandsPresent ? 1 : 0,
+          candidate.environmentalConcerns
+        ).run()
+      } catch (error) {
+        console.error('Error saving candidate to database:', error)
+      }
+    }
+
+    // Update project status
+    await c.env.DB.prepare('UPDATE scip_projects SET status = ? WHERE id = ?')
+      .bind('completed', projectId).run()
+
+    return c.json({
+      success: true,
+      projectId,
+      candidatesGenerated: topCandidates.length,
+      candidates: topCandidates,
+      message: `Successfully generated ${topCandidates.length} SCIP candidates`
+    })
+
+  } catch (error) {
+    console.error('SCIP generation error:', error)
+    return c.json({
+      error: 'Failed to generate SCIP',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
+// API: Get SCIP project details
+app.get('/api/scip/project/:id', async (c) => {
+  try {
+    const projectId = c.req.param('id')
+
+    const project = await c.env.DB.prepare(
+      'SELECT * FROM scip_projects WHERE id = ?'
+    ).bind(projectId).first()
+
+    if (!project) {
+      return c.json({ error: 'Project not found' }, 404)
+    }
+
+    const candidates = await c.env.DB.prepare(
+      'SELECT * FROM scip_candidates WHERE project_id = ? ORDER BY candidate_rank ASC'
+    ).bind(projectId).all()
+
+    return c.json({
+      project,
+      candidates: candidates.results
+    })
+
+  } catch (error) {
+    console.error('Error fetching SCIP project:', error)
+    return c.json({ error: 'Failed to fetch project' }, 500)
+  }
+})
+
+// API: Get all SCIP projects
+app.get('/api/scip/projects', async (c) => {
+  try {
+    const result = await c.env.DB.prepare(
+      'SELECT * FROM scip_projects ORDER BY created_at DESC LIMIT 50'
+    ).all()
+
+    return c.json(result.results)
+  } catch (error) {
+    return c.json({ error: 'Failed to fetch projects' }, 500)
+  }
+})
+
+// API: Sync SCIP candidate to Notion
+app.post('/api/scip/sync-notion/:candidateId', async (c) => {
+  try {
+    const candidateId = c.req.param('candidateId')
+
+    // Get Notion credentials from environment
+    const notionApiKey = c.env.NOTION_API_KEY
+    const notionDatabaseId = c.env.NOTION_DATABASE_ID
+
+    if (!notionApiKey || !notionDatabaseId) {
+      return c.json({
+        error: 'Notion integration not configured',
+        hint: 'Set NOTION_API_KEY and NOTION_DATABASE_ID environment variables'
+      }, 400)
+    }
+
+    // Fetch candidate from database
+    const candidate = await c.env.DB.prepare(
+      'SELECT * FROM scip_candidates WHERE id = ?'
+    ).bind(candidateId).first()
+
+    if (!candidate) {
+      return c.json({ error: 'Candidate not found' }, 404)
+    }
+
+    // Prepare SCIP data for Notion
+    const scipData = {
+      ...candidate,
+      scoreBreakdown: candidate.score_breakdown ? JSON.parse(candidate.score_breakdown as string) : {},
+      distanceFromCenter: null // Calculate if needed
+    }
+
+    // Sync to Notion
+    const pageId = await createFullSCIPPage(
+      { notionApiKey, databaseId: notionDatabaseId },
+      scipData
+    )
+
+    // Update candidate with Notion page ID
+    await c.env.DB.prepare(
+      'UPDATE scip_candidates SET notion_page_id = ?, notion_synced_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(pageId, candidateId).run()
+
+    // Log the sync
+    await c.env.DB.prepare(`
+      INSERT INTO scip_generation_log (candidate_id, data_source, response_status, data_retrieved)
+      VALUES (?, ?, ?, ?)
+    `).bind(
+      candidateId,
+      'notion',
+      200,
+      'Synced to Notion page: ' + pageId
+    ).run()
+
+    return c.json({
+      success: true,
+      notionPageId: pageId,
+      message: 'Successfully synced to Notion'
+    })
+
+  } catch (error) {
+    console.error('Notion sync error:', error)
+    return c.json({
+      error: 'Failed to sync to Notion',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
+// API: Delete SCIP project
+app.delete('/api/scip/project/:id', async (c) => {
+  try {
+    const projectId = c.req.param('id')
+
+    // Delete project (candidates will be cascade deleted)
+    await c.env.DB.prepare('DELETE FROM scip_projects WHERE id = ?').bind(projectId).run()
+
+    return c.json({ success: true })
+  } catch (error) {
+    return c.json({ error: 'Failed to delete project' }, 500)
   }
 })
 
