@@ -3,12 +3,14 @@ import { cors } from 'hono/cors'
 import { renderer } from './renderer'
 import { generateSCIPData, scoreProperty, enrichParcelData } from './scip-service'
 import { syncSCIPToNotion, createFullSCIPPage, verifyNotionDatabase } from './notion-service'
+import { fetchZoningOrdinances, fetchExistingConditions, lookupUtilityProviders } from './zoning-service'
 
 type Bindings = {
   DB: D1Database
-  MAPWISE_API_KEY: string
+  LAND_PORTAL_API_KEY: string
   NOTION_API_KEY?: string
   NOTION_DATABASE_ID?: string
+  NOTION_ZONING_DATABASE_ID?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -373,7 +375,7 @@ app.get('/', (c) => {
   )
 })
 
-// API: Search parcels from MapWise
+// API: Search parcels from Land Portal
 app.get('/api/parcels/search', async (c) => {
   const county = c.req.query('county')
   const limitStr = c.req.query('limit') || '10'
@@ -404,12 +406,12 @@ app.get('/api/parcels/search', async (c) => {
     }, 400)
   }
 
-  const apiKey = c.env.MAPWISE_API_KEY || 'DEMO_KEY'
-  
+  const apiKey = c.env.LAND_PORTAL_API_KEY || 'DEMO_KEY'
+
   try {
-    // Call MapWise API
+    // Call Land Portal API
     const response = await fetch(
-      `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=${limit}`,
+      `https://api.landportal.com/v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=${limit}`,
       {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -421,7 +423,7 @@ app.get('/api/parcels/search', async (c) => {
     // ✅ BEST PRACTICE 3: Handle non-200 HTTP status codes gracefully
     if (!response.ok) {
       const statusCode = response.status
-      let errorMessage = 'MapWise API error'
+      let errorMessage = 'Land Portal API error'
       let userMessage = 'Failed to search parcels'
 
       switch (statusCode) {
@@ -449,15 +451,15 @@ app.get('/api/parcels/search', async (c) => {
         case 502:
         case 503:
         case 504:
-          errorMessage = 'MapWise server error'
-          userMessage = 'MapWise service temporarily unavailable. Please try again later.'
+          errorMessage = 'Land Portal server error'
+          userMessage = 'Land Portal service temporarily unavailable. Please try again later.'
           break
         default:
           errorMessage = `HTTP ${statusCode} error`
           userMessage = 'An unexpected error occurred. Please try again.'
       }
 
-      console.error(`MapWise API Error: ${statusCode} - ${errorMessage}`)
+      console.error(`Land Portal API Error: ${statusCode} - ${errorMessage}`)
       
       return c.json({ 
         error: userMessage,
@@ -504,9 +506,10 @@ app.get('/api/parcels/search', async (c) => {
     
     // Handle network errors, timeouts, etc.
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    
-    return c.json({ 
-      error: 'Failed to connect to MapWise API',
+
+
+    return c.json({
+      error: 'Failed to connect to Land Portal API',
       details: errorMessage,
       hint: 'Please check your internet connection and try again'
     }, 500)
@@ -556,11 +559,11 @@ app.post('/api/parcels/coordinate-search', async (c) => {
     // Convert radius to miles if needed
     const radiusMiles = unit === 'km' ? searchRadius * 0.621371 : searchRadius
     
-    const apiKey = c.env.MAPWISE_API_KEY || 'DEMO_KEY'
-    
+    const apiKey = c.env.LAND_PORTAL_API_KEY || 'DEMO_KEY'
+
     // Fetch parcels from county (limit to reasonable amount)
     const response = await fetch(
-      `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=100`,
+      `https://api.landportal.com/v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=100`,
       {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -570,17 +573,17 @@ app.post('/api/parcels/coordinate-search', async (c) => {
     )
     
     if (!response.ok) {
-      return c.json({ 
-        error: 'Failed to fetch parcels from MapWise',
+      return c.json({
+        error: 'Failed to fetch parcels from Land Portal',
         statusCode: response.status
       }, response.status)
     }
-    
+
     const data = await response.json()
     const parcels = data.data || []
-    
+
     // Filter parcels by checking if address is within radius
-    // Since MapWise doesn't provide coordinates, we return all parcels
+    // Since Land Portal doesn't provide coordinates, we return all parcels
     // and let frontend do address-based filtering or use external geocoding
     const results = parcels.map((parcel: any) => ({
       ...parcel,
@@ -622,7 +625,7 @@ app.post('/api/parcels/coordinate-search', async (c) => {
         county: countyClean,
         siteName: siteName || null,
         total: results.length,
-        note: 'MapWise does not provide parcel coordinates. All parcels in county returned. Use address for distance filtering.'
+        note: 'Land Portal does not provide parcel coordinates. All parcels in county returned. Use address for distance filtering.'
       }
     })
     
@@ -664,15 +667,15 @@ app.post('/api/parcels/bulk-search', async (c) => {
       }, 400)
     }
     
-    const apiKey = c.env.MAPWISE_API_KEY || 'DEMO_KEY'
+    const apiKey = c.env.LAND_PORTAL_API_KEY || 'DEMO_KEY'
     const results = []
     const errors = []
-    
-    // Search for each PIN (MapWise doesn't support bulk, so we batch)
+
+    // Search for each PIN (Land Portal doesn't support bulk, so we batch)
     for (const pin of pins.slice(0, 50)) { // Limit to 50 PINs per request
       try {
         const response = await fetch(
-          `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=100`,
+          `https://api.landportal.com/v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=100`,
           {
             headers: {
               'Authorization': `Bearer ${apiKey}`,
@@ -881,10 +884,10 @@ app.post('/api/scip/generate', async (c) => {
 
     const projectId = projectResult.meta.last_row_id
 
-    // Fetch parcels from MapWise API within the search area
-    const apiKey = c.env.MAPWISE_API_KEY || 'DEMO_KEY'
+    // Fetch parcels from Land Portal API within the search area
+    const apiKey = c.env.LAND_PORTAL_API_KEY || 'DEMO_KEY'
     const response = await fetch(
-      `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=100`,
+      `https://api.landportal.com/v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=100`,
       {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -895,7 +898,7 @@ app.post('/api/scip/generate', async (c) => {
 
     if (!response.ok) {
       return c.json({
-        error: 'Failed to fetch parcels from MapWise',
+        error: 'Failed to fetch parcels from Land Portal',
         statusCode: response.status
       }, response.status)
     }
@@ -914,20 +917,46 @@ app.post('/api/scip/generate', async (c) => {
       })
     }
 
+    // Fetch zoning ordinances from Notion (if configured)
+    let zoningData = {}
+    let existingConditions = {}
+
+    try {
+      if (c.env.NOTION_API_KEY && c.env.NOTION_ZONING_DATABASE_ID) {
+        zoningData = await fetchZoningOrdinances(
+          c.env.NOTION_API_KEY,
+          c.env.NOTION_ZONING_DATABASE_ID,
+          countyClean
+        )
+      }
+
+      existingConditions = await fetchExistingConditions(countyClean)
+      const utilities = await lookupUtilityProviders(countyClean)
+      existingConditions = { ...existingConditions, ...utilities }
+    } catch (error) {
+      console.error('Error fetching zoning/conditions data:', error)
+      // Continue with empty data - fields will use defaults
+    }
+
     // Generate SCIP data for each parcel and score them
     const candidates = []
     for (const parcel of parcels) {
       try {
-        const scipData = await generateSCIPData(parcel, {
-          projectName,
-          searchRingCenterLat: lat,
-          searchRingCenterLon: lon,
-          searchRadiusMiles: radius,
-          county: countyClean,
-          rfEngineerName,
-          carrier,
-          projectNotes
-        })
+        const scipData = await generateSCIPData(
+          parcel,
+          {
+            projectName,
+            searchRingCenterLat: lat,
+            searchRingCenterLon: lon,
+            searchRadiusMiles: radius,
+            county: countyClean,
+            rfEngineerName,
+            carrier,
+            projectNotes
+          },
+          zoningData,
+          existingConditions
+        )
 
         candidates.push(scipData)
 
@@ -937,7 +966,7 @@ app.post('/api/scip/generate', async (c) => {
           VALUES (?, ?, ?, ?, ?)
         `).bind(
           0, // Will update after candidate is created
-          'mapwise',
+          'land_portal',
           'parcels?searchCounty=' + countyClean,
           200,
           'Parcel data retrieved'

@@ -334,7 +334,9 @@ export function estimateLeaseRate(parcel: any): string {
  */
 export async function generateSCIPData(
   parcel: any,
-  project: SCIPProject
+  project: SCIPProject,
+  zoningData?: any,
+  existingConditions?: any
 ): Promise<any> {
   // Enrich parcel data
   const enriched = await enrichParcelData(
@@ -397,7 +399,7 @@ export async function generateSCIPData(
     zoningAllowsTowers: null, // Would need zoning code lookup
     conditionalUsePermitRequired: null,
 
-    // Access & Infrastructure (placeholders - would need detailed analysis)
+    // Access & Infrastructure
     accessRoadType: 'Public Road',
     roadFrontageFeet: null,
     utilityPowerAvailable: true,
@@ -432,6 +434,73 @@ export async function generateSCIPData(
     // Images & Documents
     ...images,
     additionalImages: [],
+
+    // Existing Conditions
+    waterManagementDistrict: existingConditions?.waterManagementDistrict || 'Unknown',
+    hazardousWasteConcerns: existingConditions?.hazardousWasteConcerns || 'Unknown',
+    accessNotes: existingConditions?.accessNotes || 'To be determined',
+    powerProviderName: existingConditions?.powerProviderName || 'To be determined',
+    powerProviderPhone: existingConditions?.powerProviderPhone || 'TBD',
+    fiberAvailable: existingConditions?.fiberAvailable || false,
+    telcoProviderName: existingConditions?.telcoProviderName || 'To be determined',
+    telcoProviderPhone: existingConditions?.telcoProviderPhone || 'TBD',
+    nearestAirportName: existingConditions?.nearestAirportName || 'Unknown',
+    nearestAirportDistance: existingConditions?.nearestAirportDistance || 'Unknown',
+    localPoliceMunicipality: existingConditions?.localPoliceMunicipality || project.county,
+    localPolicePhone: existingConditions?.localPolicePhone || '911',
+    localFireDeptMunicipality: existingConditions?.localFireDeptMunicipality || project.county,
+    localFireDeptPhone: existingConditions?.localFireDeptPhone || '911',
+    siteDevelopmentConcerns: 'To be determined during site visit',
+
+    // Zoning Overview (from Notion)
+    zoningJurisdiction: zoningData?.zoningJurisdiction || project.county,
+    zoningContactName: zoningData?.zoningContactName || 'Unknown',
+    zoningContactPhone: zoningData?.zoningContactPhone || 'TBD',
+    zoningContactEmail: zoningData?.zoningContactEmail || 'TBD',
+    zoningProcessDescription: zoningData?.zoningProcessDescription || 'Check with local zoning department',
+    zoningFees: zoningData?.zoningFees || 'TBD',
+    zoningApprovalTimeframe: zoningData?.zoningApprovalTimeframe || 'TBD',
+    propertyZoningDistrict: zoningData?.propertyZoningDistrict || enriched.zoningDesignation,
+    propertyFutureLandUse: zoningData?.propertyFutureLandUse || enriched.land_use,
+    propertyCurrentUsage: zoningData?.propertyCurrentUsage || enriched.current_use,
+    meetsMinimumLotRequirements: zoningData?.meetsMinimumLotRequirements || null,
+
+    // Tower Specifics (from Notion)
+    ldcSectionReferences: zoningData?.ldcSectionReferences || 'TBD',
+    maximumTowerHeight: zoningData?.maximumTowerHeight || 'TBD',
+    stealthRequired: zoningData?.stealthRequired || null,
+    requiredCollocations: zoningData?.requiredCollocations || null,
+    residentialSeparation: zoningData?.residentialSeparation || 'TBD',
+    towerSeparation: zoningData?.towerSeparation || 'TBD',
+    separationMeasuredFrom: zoningData?.separationMeasuredFrom || 'TBD',
+    fallZoneRequirements: zoningData?.fallZoneRequirements || 'TBD',
+    specialTowerLandscaping: zoningData?.specialTowerLandscaping || 'TBD',
+    zoningNotes: zoningData?.zoningNotes || '',
+
+    // Site Plan Overview (from Notion)
+    sitePlanJurisdiction: zoningData?.sitePlanJurisdiction || project.county,
+    sitePlanContactName: zoningData?.sitePlanContactName || 'Unknown',
+    sitePlanContactPhone: zoningData?.sitePlanContactPhone || 'TBD',
+    sitePlanContactEmail: zoningData?.sitePlanContactEmail || 'TBD',
+    sitePlanFees: zoningData?.sitePlanFees || 'TBD',
+    sitePlanApprovalTimeframe: zoningData?.sitePlanApprovalTimeframe || 'TBD',
+    existingSitePlanToAmend: zoningData?.existingSitePlanToAmend || false,
+    concurrentToZoningOrBp: zoningData?.concurrentToZoningOrBp || 'TBD',
+    sitePlanSubmittalDeadlines: zoningData?.sitePlanSubmittalDeadlines || 'TBD',
+    sitePlanSubmissionFormat: zoningData?.sitePlanSubmissionFormat || 'TBD',
+    sitePlanNotes: zoningData?.sitePlanNotes || '',
+
+    // Building Permit Information (from Notion)
+    buildingPermitJurisdiction: zoningData?.buildingPermitJurisdiction || project.county,
+    buildingDeptContactName: zoningData?.buildingDeptContactName || 'Unknown',
+    buildingDeptContactPhone: zoningData?.buildingDeptContactPhone || 'TBD',
+    buildingDeptContactEmail: zoningData?.buildingDeptContactEmail || 'TBD',
+    gcMustSubmit: zoningData?.gcMustSubmit || null,
+    buildingPermitFees: zoningData?.buildingPermitFees || 'TBD',
+    buildingPermitTimeframe: zoningData?.buildingPermitTimeframe || 'TBD',
+    bondRequired: zoningData?.bondRequired || null,
+    e911AddressAssigned: zoningData?.e911AddressAssigned || 'TBD',
+    buildingPermitNotes: zoningData?.buildingPermitNotes || '',
 
     // Scoring
     overallScore: score,

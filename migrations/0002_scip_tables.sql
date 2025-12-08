@@ -86,6 +86,73 @@ CREATE TABLE IF NOT EXISTS scip_candidates (
   zoning_map_url TEXT,
   additional_images TEXT, -- JSON array
 
+  -- Existing Conditions
+  water_management_district TEXT,
+  hazardous_waste_concerns TEXT,
+  access_notes TEXT,
+  power_provider_name TEXT,
+  power_provider_phone TEXT,
+  fiber_available BOOLEAN DEFAULT 0,
+  telco_provider_name TEXT,
+  telco_provider_phone TEXT,
+  nearest_airport_name TEXT,
+  nearest_airport_distance TEXT,
+  local_police_municipality TEXT,
+  local_police_phone TEXT,
+  local_fire_dept_municipality TEXT,
+  local_fire_dept_phone TEXT,
+  site_development_concerns TEXT,
+
+  -- Zoning Overview
+  zoning_jurisdiction TEXT,
+  zoning_contact_name TEXT,
+  zoning_contact_phone TEXT,
+  zoning_contact_email TEXT,
+  zoning_process_description TEXT,
+  zoning_fees TEXT,
+  zoning_approval_timeframe TEXT,
+  property_zoning_district TEXT,
+  property_future_land_use TEXT,
+  property_current_usage TEXT,
+  meets_minimum_lot_requirements BOOLEAN DEFAULT 0,
+
+  -- Tower Specifics
+  ldc_section_references TEXT,
+  maximum_tower_height TEXT,
+  stealth_required BOOLEAN DEFAULT 0,
+  required_collocations INTEGER,
+  residential_separation TEXT,
+  tower_separation TEXT,
+  separation_measured_from TEXT,
+  fall_zone_requirements TEXT,
+  special_tower_landscaping TEXT,
+  zoning_notes TEXT,
+
+  -- Site Plan Overview
+  site_plan_jurisdiction TEXT,
+  site_plan_contact_name TEXT,
+  site_plan_contact_phone TEXT,
+  site_plan_contact_email TEXT,
+  site_plan_fees TEXT,
+  site_plan_approval_timeframe TEXT,
+  existing_site_plan_to_amend BOOLEAN DEFAULT 0,
+  concurrent_to_zoning_or_bp TEXT,
+  site_plan_submittal_deadlines TEXT,
+  site_plan_submission_format TEXT,
+  site_plan_notes TEXT,
+
+  -- Building Permit Information
+  building_permit_jurisdiction TEXT,
+  building_dept_contact_name TEXT,
+  building_dept_contact_phone TEXT,
+  building_dept_contact_email TEXT,
+  gc_must_submit BOOLEAN DEFAULT 0,
+  building_permit_fees TEXT,
+  building_permit_timeframe TEXT,
+  bond_required BOOLEAN DEFAULT 0,
+  e911_address_assigned TEXT,
+  building_permit_notes TEXT,
+
   -- Scoring
   overall_score REAL DEFAULT 0,
   score_breakdown TEXT, -- JSON object
