@@ -15,24 +15,28 @@ document.addEventListener('DOMContentLoaded', () => {
 // Switch between search modes
 function switchMode(mode) {
   currentMode = mode
-  
+
   const countySection = document.getElementById('countyInput').parentElement.parentElement
   const coordinateSection = document.getElementById('coordinateSearchSection')
   const bulkSection = document.getElementById('bulkSearchSection')
+  const landPortalSection = document.getElementById('landPortalSearchSection')
   const countyBtn = document.getElementById('countyModeBtn')
   const coordinateBtn = document.getElementById('coordinateModeBtn')
   const bulkBtn = document.getElementById('bulkModeBtn')
-  
+  const landPortalBtn = document.getElementById('landPortalModeBtn')
+
   // Hide all sections
   countySection.classList.add('hidden')
   coordinateSection.classList.add('hidden')
   bulkSection.classList.add('hidden')
-  
+  landPortalSection.classList.add('hidden')
+
   // Reset button styles
   countyBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
   coordinateBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
   bulkBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
-  
+  landPortalBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
+
   // Show selected section and highlight button
   if (mode === 'county') {
     countySection.classList.remove('hidden')
@@ -43,8 +47,11 @@ function switchMode(mode) {
   } else if (mode === 'bulk') {
     bulkSection.classList.remove('hidden')
     bulkBtn.className = 'px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg transition-all'
+  } else if (mode === 'landPortal') {
+    landPortalSection.classList.remove('hidden')
+    landPortalBtn.className = 'px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg transition-all'
   }
-  
+
   // Clear results when switching
   document.getElementById('results').innerHTML = ''
 }
@@ -368,6 +375,338 @@ function clearBulkSearch() {
   document.getElementById('pinListInput').value = ''
   document.getElementById('bulkCounty').value = ''
   document.getElementById('searchRingName').value = ''
+  document.getElementById('results').innerHTML = ''
+  currentResults = []
+}
+
+// Land Portal radius search with Municode telecom codes
+async function landPortalSearch() {
+  const lat = document.getElementById('lpLat').value.trim()
+  const lon = document.getElementById('lpLon').value.trim()
+  const radius = document.getElementById('lpRadius').value.trim()
+  const limit = document.getElementById('lpLimit').value.trim()
+  const siteName = document.getElementById('lpSiteName').value.trim()
+  const municipality = document.getElementById('lpMunicipality').value.trim()
+
+  // Validate inputs
+  if (!lat || !lon) {
+    alert('Please enter latitude and longitude coordinates')
+    return
+  }
+
+  const latitude = parseFloat(lat)
+  const longitude = parseFloat(lon)
+
+  if (isNaN(latitude) || isNaN(longitude)) {
+    alert('Invalid coordinates. Please enter valid numbers for latitude and longitude.')
+    return
+  }
+
+  if (latitude < -90 || latitude > 90) {
+    alert('Latitude must be between -90 and 90')
+    return
+  }
+
+  if (longitude < -180 || longitude > 180) {
+    alert('Longitude must be between -180 and 180')
+    return
+  }
+
+  showLoading(true, `Searching ${radius || 3} mile radius for parcels and telecom codes...`)
+
+  try {
+    const response = await fetch('/api/parcels/land-portal-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lat,
+        lon,
+        radius: radius || 3,
+        limit: limit || 3,
+        siteName,
+        municipality
+      })
+    })
+
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error + (data.hint ? '\n\n' + data.hint : ''))
+    }
+
+    currentResults = data.parcels || []
+    displayLandPortalResults(data)
+    loadStats()
+
+  } catch (error) {
+    showError(error.message)
+  } finally {
+    showLoading(false)
+  }
+}
+
+// Display Land Portal search results
+function displayLandPortalResults(data) {
+  const resultsDiv = document.getElementById('results')
+  const meta = data.meta || {}
+  const parcels = data.parcels || []
+  const telecomCodes = data.telecomCodes
+
+  let html = `
+    <div class="mb-4 p-4 bg-teal-50 border-2 border-teal-300 rounded-lg">
+      <div class="flex justify-between items-start">
+        <div class="flex-1">
+          <h3 class="text-xl font-bold text-gray-800">
+            <i class="fas fa-broadcast-tower text-teal-600 mr-2"></i>
+            Land Portal Radius Search Results
+          </h3>
+          ${meta.siteName ? `<p class="text-sm font-semibold text-teal-700 mt-1">${meta.siteName}</p>` : ''}
+          <div class="grid grid-cols-2 gap-3 mt-3 text-sm">
+            <div><span class="font-semibold">Center:</span> ${meta.centerLat?.toFixed(6)}, ${meta.centerLon?.toFixed(6)}</div>
+            <div><span class="font-semibold">Radius:</span> ${meta.radiusMiles} miles</div>
+            <div><span class="font-semibold">Municipality:</span> ${meta.municipality || 'Not specified'}</div>
+            <div><span class="font-semibold text-green-600">Parcels Found:</span> ${meta.returnedParcels || 0}</div>
+          </div>
+        </div>
+        ${parcels.length > 0 ? `
+          <button
+            onclick="saveAllLandPortalParcels('${meta.municipality || 'LAND_PORTAL'}', '${meta.siteName || ''}', ${meta.centerLat}, ${meta.centerLon}, ${meta.radiusMiles})"
+            class="ml-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all"
+            title="Save all parcels to favorites"
+          >
+            <i class="fas fa-save mr-2"></i>Save All
+          </button>
+        ` : ''}
+      </div>
+    </div>
+  `
+
+  // Display Telecom Codes Section
+  if (telecomCodes) {
+    html += `
+      <div class="mb-4 p-4 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+        <h3 class="text-lg font-bold text-gray-800 mb-3">
+          <i class="fas fa-gavel text-yellow-600 mr-2"></i>
+          Telecommunications & Antenna Ordinances
+        </h3>
+        <p class="text-sm text-gray-600 mb-2">
+          <span class="font-semibold">Municipality:</span> ${telecomCodes.municipality || 'N/A'}
+        </p>
+        ${telecomCodes.error ? `
+          <div class="bg-red-100 text-red-700 p-3 rounded mb-3 text-sm">
+            <i class="fas fa-exclamation-circle mr-2"></i>
+            ${telecomCodes.error}
+          </div>
+        ` : ''}
+        ${telecomCodes.foundSections > 0 ? `
+          <p class="text-sm text-green-600 mb-3">
+            <i class="fas fa-check-circle mr-1"></i>
+            Found ${telecomCodes.foundSections} potentially relevant code sections
+          </p>
+          <div class="space-y-2 mb-3">
+            ${(telecomCodes.sections || []).slice(0, 5).map(section => `
+              <div class="bg-white p-2 rounded border border-gray-200">
+                <a href="${section.url}" target="_blank" class="text-blue-600 hover:text-blue-800 font-medium text-sm">
+                  <i class="fas fa-external-link-alt mr-1"></i>
+                  ${section.title || 'View Code Section'}
+                </a>
+                ${section.snippet ? `<p class="text-xs text-gray-600 mt-1">${section.snippet}</p>` : ''}
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+        <div class="flex gap-2 flex-wrap">
+          <a href="${telecomCodes.directSearchLink || telecomCodes.searchUrl}"
+             target="_blank"
+             class="inline-block px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-sm transition-all">
+            <i class="fas fa-search mr-2"></i>Search Municode Directly
+          </a>
+        </div>
+        ${telecomCodes.suggestedSearchTerms ? `
+          <div class="mt-3 text-xs text-gray-500">
+            <p class="font-semibold mb-1">Suggested search terms:</p>
+            <ul class="list-disc list-inside">
+              ${telecomCodes.suggestedSearchTerms.map(term => `<li>${term}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+        <p class="text-xs text-gray-500 mt-3 italic">
+          <i class="fas fa-info-circle mr-1"></i>
+          ${telecomCodes.note || 'Please verify current regulations directly with the jurisdiction.'}
+        </p>
+      </div>
+    `
+  }
+
+  // Display Parcels
+  if (parcels.length === 0) {
+    html += `
+      <div class="text-center py-8 bg-gray-50 border-2 border-gray-200 rounded-lg">
+        <i class="fas fa-map-marker-alt text-gray-400 text-4xl mb-3"></i>
+        <p class="text-lg font-semibold text-gray-600">No parcels found in this area</p>
+        <p class="text-sm text-gray-500 mt-2">Try expanding the search radius or checking coordinates</p>
+      </div>
+    `
+  } else {
+    html += `
+      <h4 class="text-lg font-bold text-gray-800 mb-3">
+        <i class="fas fa-layer-group text-teal-600 mr-2"></i>
+        Property Parcels (${parcels.length})
+      </h4>
+      <div class="space-y-3 max-h-96 overflow-y-auto">
+        ${parcels.map((parcel, index) => renderLandPortalParcelCard(parcel, index, meta.municipality || 'LAND_PORTAL')).join('')}
+      </div>
+    `
+  }
+
+  resultsDiv.innerHTML = html
+}
+
+// Render Land Portal parcel card
+function renderLandPortalParcelCard(parcel, index, jurisdiction) {
+  // Handle different possible parcel data structures from Land Portal API
+  const pin = parcel.apn || parcel.parcel_id || parcel.pin || parcel.identifiers?.pin || `LP-${index}`
+  const owner = parcel.owner_name || parcel.owner?.name || parcel.owner?.primary_name || 'N/A'
+  const address = parcel.address || parcel.site_address || parcel.site?.address || 'No address'
+  const acres = parcel.acres || parcel.lot_size_acres || parcel.land?.acres_gis || 'N/A'
+  const zoning = parcel.zoning || parcel.zone || parcel.land?.zoning || 'N/A'
+  const landUse = parcel.land_use || parcel.use_code || parcel.land?.land_use?.luse_desc || 'N/A'
+  const marketValue = parcel.market_value || parcel.assessed_value || parcel.valuation?.market?.total || 0
+  const city = parcel.city || parcel.site?.city || 'N/A'
+  const county = parcel.county || parcel.county_name || jurisdiction
+
+  return `
+    <div class="bg-gray-50 border-2 border-gray-200 rounded-lg p-4 hover:border-teal-400 transition-all">
+      <div class="flex justify-between items-start">
+        <div class="flex-1">
+          <h4 class="font-bold text-lg text-gray-800 mb-2">
+            <i class="fas fa-map-pin text-teal-500 mr-2"></i>
+            Parcel: ${pin}
+          </h4>
+          <div class="grid grid-cols-2 gap-2 text-sm mb-2">
+            <div class="text-gray-600">
+              <span class="font-semibold">Owner:</span> ${owner}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">City:</span> ${city}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Address:</span> ${address}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Acres:</span> ${typeof acres === 'number' ? acres.toFixed(2) : acres}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Zoning:</span> ${zoning}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Land Use:</span> ${landUse}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Market Value:</span> $${typeof marketValue === 'number' ? marketValue.toLocaleString() : marketValue}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">County:</span> ${county}
+            </div>
+          </div>
+          ${parcel.coordinates ? `
+            <p class="text-xs text-gray-500">
+              <i class="fas fa-crosshairs mr-1"></i>
+              ${parcel.coordinates.lat?.toFixed(6)}, ${parcel.coordinates.lon?.toFixed(6)}
+            </p>
+          ` : ''}
+        </div>
+        <button
+          onclick="saveLandPortalParcel('${pin.replace(/'/g, "\\'")}', '${county}', ${index})"
+          class="ml-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all transform hover:scale-105"
+          title="Save to favorites"
+        >
+          <i class="fas fa-star"></i>
+        </button>
+      </div>
+    </div>
+  `
+}
+
+// Save Land Portal parcel to favorites
+async function saveLandPortalParcel(parcelId, county, index) {
+  const parcel = currentResults[index]
+  const notes = prompt('Add notes for this parcel (optional):')
+
+  try {
+    const response = await fetch('/api/parcels/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        parcelId,
+        county,
+        parcelData: parcel,
+        notes: notes || 'From Land Portal search'
+      })
+    })
+
+    const data = await response.json()
+
+    if (data.success) {
+      alert('Parcel saved to favorites!')
+      loadStats()
+    } else {
+      throw new Error('Failed to save')
+    }
+  } catch (error) {
+    alert(`Failed to save parcel: ${error.message}`)
+  }
+}
+
+// Save all Land Portal parcels
+async function saveAllLandPortalParcels(jurisdiction, siteName, lat, lon, radius) {
+  if (!currentResults || currentResults.length === 0) {
+    alert('No parcels to save')
+    return
+  }
+
+  const notes = siteName
+    ? `Land Portal: ${siteName} (${lat}, ${lon}, ${radius}mi radius)`
+    : `Land Portal search: ${lat}, ${lon}, ${radius}mi`
+
+  let saved = 0
+  let errors = 0
+
+  showLoading(true, `Saving ${currentResults.length} parcels...`)
+
+  for (const parcel of currentResults) {
+    const pin = parcel.apn || parcel.parcel_id || parcel.pin || 'unknown'
+    try {
+      const response = await fetch('/api/parcels/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parcelId: pin,
+          county: jurisdiction,
+          parcelData: parcel,
+          notes
+        })
+      })
+      if (response.ok) saved++
+      else errors++
+    } catch (error) {
+      errors++
+    }
+  }
+
+  showLoading(false)
+  alert(`Saved ${saved} parcels${errors > 0 ? `\n${errors} failed to save` : ''}`)
+  loadStats()
+}
+
+// Clear Land Portal search form
+function clearLandPortalSearch() {
+  document.getElementById('lpLat').value = ''
+  document.getElementById('lpLon').value = ''
+  document.getElementById('lpRadius').value = '3'
+  document.getElementById('lpLimit').value = '3'
+  document.getElementById('lpSiteName').value = ''
+  document.getElementById('lpMunicipality').value = ''
   document.getElementById('results').innerHTML = ''
   currentResults = []
 }

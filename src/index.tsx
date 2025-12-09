@@ -5,6 +5,7 @@ import { renderer } from './renderer'
 type Bindings = {
   DB: D1Database
   MAPWISE_API_KEY: string
+  LAND_PORTAL_API_KEY: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -81,12 +82,19 @@ app.get('/', (c) => {
             >
               <i class="fas fa-crosshairs mr-2"></i>RF Coordinates
             </button>
-            <button 
+            <button
               id="bulkModeBtn"
               onclick="switchMode('bulk')"
               class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
             >
               <i class="fas fa-layer-group mr-2"></i>Bulk PINs
+            </button>
+            <button
+              id="landPortalModeBtn"
+              onclick="switchMode('landPortal')"
+              class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
+            >
+              <i class="fas fa-broadcast-tower mr-2"></i>Land Portal + Telecom Codes
             </button>
           </div>
 
@@ -208,6 +216,98 @@ app.get('/', (c) => {
             <p class="text-xs text-gray-500 mt-2">
               <i class="fas fa-info-circle mr-1"></i>
               Paste PINs from your search ring tool • Max 50 PINs per search
+            </p>
+          </div>
+
+          {/* Land Portal + Telecom Codes Search (Hidden by default) */}
+          <div id="landPortalSearchSection" class="hidden mb-6">
+            <label class="block text-gray-700 text-lg font-semibold mb-3">
+              <i class="fas fa-broadcast-tower text-teal-600 mr-2"></i>
+              Land Portal Radius Search + Municipal Telecom Codes
+            </label>
+            <p class="text-sm text-gray-600 mb-4">
+              Search property parcels within a 3-mile radius and automatically research local telecommunications/antenna ordinances.
+            </p>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Latitude</label>
+                <input
+                  type="text"
+                  id="lpLat"
+                  placeholder="e.g., 28.5383"
+                  class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Longitude</label>
+                <input
+                  type="text"
+                  id="lpLon"
+                  placeholder="e.g., -81.3792"
+                  class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div class="grid grid-cols-3 gap-3 mb-3">
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Radius (miles)</label>
+                <input
+                  type="number"
+                  id="lpRadius"
+                  value="3"
+                  min="0.5"
+                  max="10"
+                  step="0.5"
+                  class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Max Results</label>
+                <input
+                  type="number"
+                  id="lpLimit"
+                  value="3"
+                  min="1"
+                  max="10"
+                  class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Site Name (optional)</label>
+                <input
+                  type="text"
+                  id="lpSiteName"
+                  placeholder="e.g., Tower Site A"
+                  class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="block text-xs text-gray-500 mb-1">Municipality/Jurisdiction (for telecom code lookup)</label>
+              <input
+                type="text"
+                id="lpMunicipality"
+                placeholder="e.g., Orlando, Orange County"
+                class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+              />
+            </div>
+            <div class="flex gap-3">
+              <button
+                onclick="landPortalSearch()"
+                class="flex-1 px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                <i class="fas fa-search-location mr-2"></i>Search Parcels &amp; Telecom Codes
+              </button>
+              <button
+                onclick="clearLandPortalSearch()"
+                class="px-6 py-3 bg-gray-400 hover:bg-gray-500 text-white font-semibold rounded-lg transition-all"
+              >
+                <i class="fas fa-times mr-2"></i>Clear
+              </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">
+              <i class="fas fa-info-circle mr-1"></i>
+              Uses Land Portal API for parcels • Scrapes Municode for telecommunications ordinances
             </p>
           </div>
 
@@ -618,8 +718,279 @@ app.post('/api/parcels/bulk-search', async (c) => {
     
   } catch (error) {
     console.error('Bulk search error:', error)
-    return c.json({ 
+    return c.json({
       error: 'Failed to perform bulk search',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
+// API: Land Portal radius search - parcels within radius of lat/lon
+app.post('/api/parcels/land-portal-search', async (c) => {
+  try {
+    const { lat, lon, radius, limit, siteName, municipality } = await c.req.json()
+
+    // Validate inputs
+    if (!lat || !lon) {
+      return c.json({
+        error: 'Missing required parameters',
+        hint: 'Provide latitude (lat) and longitude (lon)'
+      }, 400)
+    }
+
+    const latitude = parseFloat(lat)
+    const longitude = parseFloat(lon)
+    const searchRadius = parseFloat(radius) || 3 // Default 3 miles
+    const maxResults = parseInt(limit) || 3 // Default 3 results
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return c.json({
+        error: 'Invalid coordinates',
+        hint: 'Latitude and longitude must be valid numbers'
+      }, 400)
+    }
+
+    // Validate coordinate ranges
+    if (latitude < -90 || latitude > 90) {
+      return c.json({ error: 'Latitude must be between -90 and 90' }, 400)
+    }
+    if (longitude < -180 || longitude > 180) {
+      return c.json({ error: 'Longitude must be between -180 and 180' }, 400)
+    }
+
+    // Convert radius to meters for API (3 miles = ~4828 meters)
+    const radiusMeters = Math.round(searchRadius * 1609.34)
+
+    const apiKey = c.env.LAND_PORTAL_API_KEY
+
+    if (!apiKey) {
+      return c.json({
+        error: 'Land Portal API key not configured',
+        hint: 'Please configure LAND_PORTAL_API_KEY environment variable'
+      }, 500)
+    }
+
+    // Call Land Portal API for parcels within radius
+    // Using the parcels/radius endpoint format
+    const landPortalUrl = `https://api.landportal.com/v1/parcels/radius?lat=${latitude}&lon=${longitude}&radius=${radiusMeters}&limit=${maxResults}`
+
+    console.log(`Land Portal API request: ${landPortalUrl}`)
+
+    const response = await fetch(landPortalUrl, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      const statusCode = response.status
+      let errorMessage = 'Land Portal API error'
+
+      switch (statusCode) {
+        case 400:
+          errorMessage = 'Invalid request parameters'
+          break
+        case 401:
+          errorMessage = 'API authentication failed - check your API key'
+          break
+        case 403:
+          errorMessage = 'Access denied - subscription may be required'
+          break
+        case 404:
+          errorMessage = 'No parcels found in this area'
+          break
+        case 429:
+          errorMessage = 'Rate limit exceeded - please wait and try again'
+          break
+        case 500:
+        case 502:
+        case 503:
+        case 504:
+          errorMessage = 'Land Portal service temporarily unavailable'
+          break
+        default:
+          errorMessage = `HTTP ${statusCode} error`
+      }
+
+      console.error(`Land Portal API Error: ${statusCode} - ${errorMessage}`)
+
+      return c.json({
+        error: errorMessage,
+        statusCode,
+        parcels: [],
+        telecomCodes: null
+      }, statusCode >= 500 ? 503 : statusCode)
+    }
+
+    const parcelsData = await response.json()
+    const parcels = parcelsData.data || parcelsData.parcels || parcelsData.results || []
+
+    // If municipality provided, also fetch telecom codes
+    let telecomCodes = null
+    if (municipality && municipality.trim()) {
+      try {
+        telecomCodes = await fetchMunicodeTelecomCodes(municipality.trim())
+      } catch (telecomError) {
+        console.error('Failed to fetch telecom codes:', telecomError)
+        telecomCodes = {
+          error: 'Failed to fetch municipal codes',
+          municipality: municipality.trim(),
+          searchUrl: `https://library.municode.com/search?query=telecommunications+antennas+${encodeURIComponent(municipality.trim())}`
+        }
+      }
+    }
+
+    // Save search to database
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
+      ).bind(
+        municipality || 'LAND_PORTAL',
+        JSON.stringify({
+          type: 'land-portal',
+          lat: latitude,
+          lon: longitude,
+          radius: searchRadius,
+          radiusUnit: 'miles',
+          siteName: siteName || null,
+          municipality: municipality || null
+        }),
+        parcels.length
+      ).run()
+    } catch (dbError) {
+      console.error('Database save error:', dbError)
+    }
+
+    return c.json({
+      success: true,
+      parcels: parcels.slice(0, maxResults),
+      telecomCodes,
+      meta: {
+        centerLat: latitude,
+        centerLon: longitude,
+        radiusMiles: searchRadius,
+        radiusMeters: radiusMeters,
+        siteName: siteName || null,
+        municipality: municipality || null,
+        totalParcels: parcels.length,
+        returnedParcels: Math.min(parcels.length, maxResults)
+      }
+    })
+
+  } catch (error) {
+    console.error('Land Portal search error:', error)
+    return c.json({
+      error: 'Failed to perform Land Portal search',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
+// Helper function to fetch telecommunications codes from Municode
+async function fetchMunicodeTelecomCodes(municipality: string): Promise<any> {
+  // Clean and format municipality name for search
+  const searchTerms = municipality.replace(/[,]/g, ' ').trim()
+
+  // Build Municode search URL for telecommunications/antenna codes
+  const searchUrl = `https://library.municode.com/search?query=telecommunications+antenna+wireless+tower+${encodeURIComponent(searchTerms)}`
+
+  try {
+    // Fetch the search results page
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`Municode returned ${response.status}`)
+    }
+
+    const html = await response.text()
+
+    // Parse relevant sections from HTML
+    const telecomSections: Array<{title: string, url: string, snippet: string}> = []
+
+    // Look for search results containing telecommunications/antenna content
+    // Pattern matches: title links and snippets in search results
+    const resultPattern = /<a[^>]*href="([^"]*library\.municode\.com[^"]*)"[^>]*>([^<]*(?:telecom|antenna|wireless|tower)[^<]*)<\/a>/gi
+    const snippetPattern = /<p[^>]*class="[^"]*snippet[^"]*"[^>]*>([^<]*(?:telecom|antenna|wireless|tower|communication)[^<]*)<\/p>/gi
+
+    let match
+    while ((match = resultPattern.exec(html)) !== null) {
+      telecomSections.push({
+        url: match[1],
+        title: match[2].trim(),
+        snippet: ''
+      })
+    }
+
+    // Also try to extract any direct links to code sections
+    const codeLinks = html.match(/href="(https:\/\/library\.municode\.com\/[^"]*(?:telecommunications|antenna|wireless)[^"]*)"/gi) || []
+
+    // Build list of relevant code sections found
+    const relevantCodes = codeLinks.slice(0, 5).map(link => {
+      const url = link.replace(/href="/i, '').replace(/"$/, '')
+      return { url, title: 'Telecommunications/Antenna Code Section' }
+    })
+
+    return {
+      municipality: municipality,
+      searchUrl: searchUrl,
+      foundSections: telecomSections.length + relevantCodes.length,
+      sections: [...telecomSections.slice(0, 5), ...relevantCodes],
+      keywords: ['telecommunications', 'antenna', 'wireless facility', 'communication tower', 'cell tower'],
+      note: 'Please verify current regulations directly with the jurisdiction. Municode data is for reference only.',
+      directSearchLink: searchUrl
+    }
+
+  } catch (error) {
+    console.error('Municode fetch error:', error)
+
+    // Return a fallback with search link even if scraping fails
+    return {
+      municipality: municipality,
+      searchUrl: searchUrl,
+      foundSections: 0,
+      sections: [],
+      error: 'Unable to automatically fetch codes - please search manually',
+      directSearchLink: searchUrl,
+      suggestedSearchTerms: [
+        `${municipality} telecommunications ordinance`,
+        `${municipality} antenna regulations`,
+        `${municipality} wireless facilities code`
+      ]
+    }
+  }
+}
+
+// API: Direct Municode search endpoint
+app.post('/api/municode/search', async (c) => {
+  try {
+    const { municipality, keywords } = await c.req.json()
+
+    if (!municipality) {
+      return c.json({
+        error: 'Municipality parameter is required',
+        hint: 'Provide a city or county name'
+      }, 400)
+    }
+
+    const searchKeywords = keywords || ['telecommunications', 'antenna', 'wireless', 'tower']
+    const results = await fetchMunicodeTelecomCodes(municipality)
+
+    return c.json({
+      success: true,
+      ...results
+    })
+
+  } catch (error) {
+    console.error('Municode search error:', error)
+    return c.json({
+      error: 'Failed to search Municode',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, 500)
   }
