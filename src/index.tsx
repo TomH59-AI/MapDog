@@ -5,6 +5,7 @@ import { renderer } from './renderer'
 type Bindings = {
   DB: D1Database
   MAPWISE_API_KEY: string
+  ATTOM_API_KEY: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -81,12 +82,19 @@ app.get('/', (c) => {
             >
               <i class="fas fa-crosshairs mr-2"></i>RF Coordinates
             </button>
-            <button 
+            <button
               id="bulkModeBtn"
               onclick="switchMode('bulk')"
               class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
             >
               <i class="fas fa-layer-group mr-2"></i>Bulk PINs
+            </button>
+            <button
+              id="scipModeBtn"
+              onclick="switchMode('scip')"
+              class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
+            >
+              <i class="fas fa-bullseye mr-2"></i>SCIP Property
             </button>
           </div>
 
@@ -208,6 +216,71 @@ app.get('/', (c) => {
             <p class="text-xs text-gray-500 mt-2">
               <i class="fas fa-info-circle mr-1"></i>
               Paste PINs from your search ring tool • Max 50 PINs per search
+            </p>
+          </div>
+
+          {/* SCIP Property Search (Hidden by default) */}
+          <div id="scipSearchSection" class="hidden mb-6">
+            <label class="block text-gray-700 text-lg font-semibold mb-3">
+              <i class="fas fa-bullseye text-emerald-600 mr-2"></i>
+              SCIP - Search Coordinate In Property
+            </label>
+            <p class="text-sm text-gray-600 mb-3 bg-emerald-50 p-2 rounded">
+              <i class="fas fa-info-circle mr-1"></i>
+              Find properties within 0.50 mile radius using ATTOM Data API
+            </p>
+            <div class="mb-3">
+              <input
+                type="text"
+                id="scipSiteName"
+                placeholder="Site Name (e.g., Tower Site Alpha)"
+                class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+              <input
+                type="text"
+                id="scipLat"
+                placeholder="Latitude (e.g., 28.5383)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none"
+              />
+              <input
+                type="text"
+                id="scipLon"
+                placeholder="Longitude (e.g., -81.3792)"
+                class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+            <div class="mb-3">
+              <label class="text-sm text-gray-600 mb-1 block">Search Radius (miles)</label>
+              <input
+                type="number"
+                id="scipRadius"
+                placeholder="0.50"
+                value="0.50"
+                min="0.1"
+                max="10"
+                step="0.1"
+                class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+            <div class="flex gap-3">
+              <button
+                onclick="scipSearch()"
+                class="flex-1 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                <i class="fas fa-search-location mr-2"></i>Find Properties
+              </button>
+              <button
+                onclick="clearScipSearch()"
+                class="px-6 py-3 bg-gray-400 hover:bg-gray-500 text-white font-semibold rounded-lg transition-all"
+              >
+                <i class="fas fa-times mr-2"></i>Clear
+              </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">
+              <i class="fas fa-database mr-1"></i>
+              Powered by ATTOM Data • Returns property details with coordinates
             </p>
           </div>
 
@@ -620,6 +693,220 @@ app.post('/api/parcels/bulk-search', async (c) => {
     console.error('Bulk search error:', error)
     return c.json({ 
       error: 'Failed to perform bulk search',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
+// API: SCIP - Search Coordinate In Property (ATTOM Data API)
+// Searches for properties within a radius of center point coordinates
+app.post('/api/parcels/scip-search', async (c) => {
+  try {
+    const { lat, lon, radius, siteName } = await c.req.json()
+
+    // Validate inputs
+    if (!lat || !lon) {
+      return c.json({
+        error: 'Missing required parameters',
+        hint: 'Provide lat and lon coordinates'
+      }, 400)
+    }
+
+    const latitude = parseFloat(lat)
+    const longitude = parseFloat(lon)
+    const searchRadius = parseFloat(radius) || 0.5 // Default to 0.5 miles
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return c.json({
+        error: 'Invalid coordinates',
+        hint: 'Coordinates must be valid numbers'
+      }, 400)
+    }
+
+    // Validate coordinate ranges
+    if (latitude < -90 || latitude > 90) {
+      return c.json({ error: 'Latitude must be between -90 and 90' }, 400)
+    }
+    if (longitude < -180 || longitude > 180) {
+      return c.json({ error: 'Longitude must be between -180 and 180' }, 400)
+    }
+
+    // Validate radius (max 10 miles for performance)
+    if (searchRadius <= 0 || searchRadius > 10) {
+      return c.json({
+        error: 'Invalid radius',
+        hint: 'Radius must be between 0.1 and 10 miles'
+      }, 400)
+    }
+
+    const apiKey = c.env.ATTOM_API_KEY
+
+    if (!apiKey) {
+      return c.json({
+        error: 'ATTOM API key not configured',
+        hint: 'Please configure the ATTOM_API_KEY environment variable'
+      }, 500)
+    }
+
+    // Call ATTOM Property API with radius search
+    const attomUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/snapshot?latitude=${latitude}&longitude=${longitude}&radius=${searchRadius}&pagesize=50`
+
+    console.log(`SCIP Search: ${latitude}, ${longitude}, ${searchRadius}mi`)
+
+    const response = await fetch(attomUrl, {
+      headers: {
+        'Accept': 'application/json',
+        'apikey': apiKey
+      }
+    })
+
+    // Handle non-200 HTTP status codes
+    if (!response.ok) {
+      const statusCode = response.status
+      let errorMessage = 'ATTOM API error'
+      let userMessage = 'Failed to search properties'
+
+      switch (statusCode) {
+        case 400:
+          errorMessage = 'Bad request - invalid parameters'
+          userMessage = 'Invalid search parameters. Please check coordinates.'
+          break
+        case 401:
+          errorMessage = 'Unauthorized - invalid API key'
+          userMessage = 'ATTOM API authentication failed. Please verify API key.'
+          break
+        case 403:
+          errorMessage = 'Forbidden - access denied'
+          userMessage = 'Access denied. Please check your ATTOM subscription.'
+          break
+        case 404:
+          errorMessage = 'Not found - no data available'
+          userMessage = 'No properties found in this area.'
+          break
+        case 429:
+          errorMessage = 'Rate limit exceeded'
+          userMessage = 'Too many requests. Please wait a moment and try again.'
+          break
+        case 500:
+        case 502:
+        case 503:
+        case 504:
+          errorMessage = 'ATTOM server error'
+          userMessage = 'ATTOM service temporarily unavailable. Please try again later.'
+          break
+        default:
+          errorMessage = `HTTP ${statusCode} error`
+          userMessage = 'An unexpected error occurred. Please try again.'
+      }
+
+      console.error(`ATTOM API Error: ${statusCode} - ${errorMessage}`)
+
+      return c.json({
+        error: userMessage,
+        statusCode,
+        details: errorMessage
+      }, statusCode >= 500 ? 503 : statusCode)
+    }
+
+    const data = await response.json()
+
+    // ATTOM returns property array
+    const properties = data.property || []
+    const recordCount = properties.length
+
+    // Transform ATTOM data to a consistent format
+    const results = properties.map((prop: any) => ({
+      identifiers: {
+        attom_id: prop.identifier?.attomId,
+        apn: prop.identifier?.apn,
+        fips: prop.identifier?.fips
+      },
+      location: {
+        latitude: prop.location?.latitude,
+        longitude: prop.location?.longitude,
+        distance: prop.location?.distance,
+        address: prop.address?.oneLine || '',
+        street: prop.address?.line1 || '',
+        city: prop.address?.locality || '',
+        state: prop.address?.countrySubd || '',
+        zipcode: prop.address?.postal1 || '',
+        county: prop.area?.countrySecSubd || ''
+      },
+      owner: {
+        primary_name: prop.owner?.[0]?.fullName || 'N/A',
+        owner1: prop.owner?.[0]?.fullName,
+        owner2: prop.owner?.[1]?.fullName
+      },
+      land: {
+        acres: prop.lot?.lotSize1 ? (prop.lot.lotSize1 / 43560).toFixed(2) : null,
+        lot_sqft: prop.lot?.lotSize1,
+        lot_size2: prop.lot?.lotSize2,
+        zoning: prop.lot?.zoning || 'N/A',
+        land_use: prop.summary?.propClass || prop.summary?.propSubType || 'N/A'
+      },
+      building: {
+        year_built: prop.summary?.yearBuilt,
+        sqft: prop.building?.size?.livingSize,
+        bedrooms: prop.building?.rooms?.beds,
+        bathrooms: prop.building?.rooms?.bathsTotal,
+        stories: prop.building?.summary?.levels
+      },
+      valuation: {
+        market_total: prop.assessment?.assessed?.assdTtlValue,
+        market_land: prop.assessment?.market?.mktLandValue,
+        market_improvement: prop.assessment?.market?.mktImprValue,
+        tax_amount: prop.assessment?.tax?.taxAmt
+      },
+      sale: {
+        last_sale_date: prop.sale?.salesHistory?.[0]?.saleTransDate,
+        last_sale_price: prop.sale?.salesHistory?.[0]?.saleAmt
+      },
+      _searchRing: {
+        centerLat: latitude,
+        centerLon: longitude,
+        radiusMiles: searchRadius,
+        siteName: siteName || null
+      }
+    }))
+
+    // Save search to database
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
+      ).bind(
+        'SCIP-SEARCH',
+        JSON.stringify({
+          type: 'scip',
+          lat: latitude,
+          lon: longitude,
+          radius: searchRadius,
+          siteName
+        }),
+        recordCount
+      ).run()
+    } catch (dbError) {
+      console.error('Database save error:', dbError)
+    }
+
+    console.log(`SCIP Search found ${recordCount} properties`)
+
+    return c.json({
+      success: true,
+      results,
+      meta: {
+        centerLat: latitude,
+        centerLon: longitude,
+        radiusMiles: searchRadius,
+        siteName: siteName || null,
+        total: recordCount,
+        source: 'ATTOM Data'
+      }
+    })
+
+  } catch (error) {
+    console.error('SCIP search error:', error)
+    return c.json({
+      error: 'Failed to perform SCIP search',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, 500)
   }

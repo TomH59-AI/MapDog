@@ -15,24 +15,28 @@ document.addEventListener('DOMContentLoaded', () => {
 // Switch between search modes
 function switchMode(mode) {
   currentMode = mode
-  
+
   const countySection = document.getElementById('countyInput').parentElement.parentElement
   const coordinateSection = document.getElementById('coordinateSearchSection')
   const bulkSection = document.getElementById('bulkSearchSection')
+  const scipSection = document.getElementById('scipSearchSection')
   const countyBtn = document.getElementById('countyModeBtn')
   const coordinateBtn = document.getElementById('coordinateModeBtn')
   const bulkBtn = document.getElementById('bulkModeBtn')
-  
+  const scipBtn = document.getElementById('scipModeBtn')
+
   // Hide all sections
   countySection.classList.add('hidden')
   coordinateSection.classList.add('hidden')
   bulkSection.classList.add('hidden')
-  
+  scipSection.classList.add('hidden')
+
   // Reset button styles
   countyBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
   coordinateBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
   bulkBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
-  
+  scipBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
+
   // Show selected section and highlight button
   if (mode === 'county') {
     countySection.classList.remove('hidden')
@@ -43,8 +47,11 @@ function switchMode(mode) {
   } else if (mode === 'bulk') {
     bulkSection.classList.remove('hidden')
     bulkBtn.className = 'px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg transition-all'
+  } else if (mode === 'scip') {
+    scipSection.classList.remove('hidden')
+    scipBtn.className = 'px-4 py-2 bg-emerald-600 text-white font-semibold rounded-lg transition-all'
   }
-  
+
   // Clear results when switching
   document.getElementById('results').innerHTML = ''
 }
@@ -368,6 +375,271 @@ function clearBulkSearch() {
   document.getElementById('pinListInput').value = ''
   document.getElementById('bulkCounty').value = ''
   document.getElementById('searchRingName').value = ''
+  document.getElementById('results').innerHTML = ''
+  currentResults = []
+}
+
+// SCIP - Search Coordinate In Property (ATTOM Data API)
+async function scipSearch() {
+  const lat = document.getElementById('scipLat').value.trim()
+  const lon = document.getElementById('scipLon').value.trim()
+  const radius = document.getElementById('scipRadius').value.trim() || '0.50'
+  const siteName = document.getElementById('scipSiteName').value.trim()
+
+  // Validate inputs
+  if (!lat || !lon) {
+    alert('⚠️ Please enter latitude and longitude\n\nGet these from your search ring coordinates')
+    return
+  }
+
+  const latitude = parseFloat(lat)
+  const longitude = parseFloat(lon)
+
+  if (isNaN(latitude) || isNaN(longitude)) {
+    alert('⚠️ Invalid coordinates\n\nCoordinates must be valid numbers')
+    return
+  }
+
+  if (latitude < -90 || latitude > 90) {
+    alert('⚠️ Invalid latitude\n\nLatitude must be between -90 and 90')
+    return
+  }
+
+  if (longitude < -180 || longitude > 180) {
+    alert('⚠️ Invalid longitude\n\nLongitude must be between -180 and 180')
+    return
+  }
+
+  showLoading(true, `Searching ${radius} mile radius for properties...`)
+
+  try {
+    const response = await fetch('/api/parcels/scip-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lat,
+        lon,
+        radius,
+        siteName
+      })
+    })
+
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error + (data.hint ? '\n\n💡 ' + data.hint : ''))
+    }
+
+    currentResults = data.results || []
+    displayScipResults(data, siteName)
+    loadStats()
+
+  } catch (error) {
+    showError(error.message)
+  } finally {
+    showLoading(false)
+  }
+}
+
+// Display SCIP search results
+function displayScipResults(data, siteName) {
+  const resultsDiv = document.getElementById('results')
+  const meta = data.meta || {}
+  const found = meta.total || 0
+
+  if (found === 0) {
+    resultsDiv.innerHTML = `
+      <div class="text-center py-8 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+        <i class="fas fa-bullseye text-yellow-600 text-4xl mb-3"></i>
+        <p class="text-lg font-semibold text-gray-800">No properties found</p>
+        <p class="text-sm text-gray-600 mt-2">Center: ${meta.centerLat}, ${meta.centerLon}</p>
+        <p class="text-sm text-gray-600">Radius: ${meta.radiusMiles} miles</p>
+        <p class="text-xs text-gray-500 mt-2">Try a larger radius or different coordinates</p>
+      </div>
+    `
+    return
+  }
+
+  resultsDiv.innerHTML = `
+    <div class="mb-4 p-4 bg-emerald-50 border-2 border-emerald-300 rounded-lg">
+      <div class="flex justify-between items-start">
+        <div class="flex-1">
+          <h3 class="text-xl font-bold text-gray-800">
+            <i class="fas fa-bullseye text-emerald-600 mr-2"></i>
+            SCIP Property Results
+          </h3>
+          ${siteName ? `<p class="text-sm font-semibold text-emerald-700 mt-1">${siteName}</p>` : ''}
+          <div class="grid grid-cols-2 gap-3 mt-3 text-sm">
+            <div><span class="font-semibold">Center:</span> ${meta.centerLat.toFixed(6)}, ${meta.centerLon.toFixed(6)}</div>
+            <div><span class="font-semibold">Radius:</span> ${meta.radiusMiles} miles</div>
+            <div><span class="font-semibold">Source:</span> ${meta.source || 'ATTOM Data'}</div>
+            <div><span class="font-semibold text-green-600">Properties:</span> ${found}</div>
+          </div>
+        </div>
+        <button
+          onclick="saveAllScipParcels('${siteName}', ${meta.centerLat}, ${meta.centerLon}, ${meta.radiusMiles})"
+          class="ml-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all"
+          title="Save all to favorites"
+        >
+          <i class="fas fa-save mr-2"></i>Save All
+        </button>
+      </div>
+    </div>
+    <div class="space-y-3 max-h-96 overflow-y-auto">
+      ${currentResults.map((parcel, index) => renderScipParcelCard(parcel, index)).join('')}
+    </div>
+  `
+}
+
+// Render SCIP parcel card
+function renderScipParcelCard(parcel, index) {
+  const apn = parcel.identifiers?.apn || `ATTOM-${parcel.identifiers?.attom_id || index}`
+  const owner = parcel.owner?.primary_name || 'N/A'
+  const address = parcel.location?.address || parcel.location?.street || 'No address'
+  const city = parcel.location?.city || 'N/A'
+  const state = parcel.location?.state || ''
+  const zipcode = parcel.location?.zipcode || ''
+  const county = parcel.location?.county || 'N/A'
+  const acres = parcel.land?.acres || 'N/A'
+  const zoning = parcel.land?.zoning || 'N/A'
+  const landUse = parcel.land?.land_use || 'N/A'
+  const marketValue = parcel.valuation?.market_total || 0
+  const distance = parcel.location?.distance
+  const yearBuilt = parcel.building?.year_built
+  const sqft = parcel.building?.sqft
+
+  return `
+    <div class="bg-emerald-50 border-2 border-emerald-200 rounded-lg p-4 hover:border-emerald-400 transition-all">
+      <div class="flex justify-between items-start">
+        <div class="flex-1">
+          <h4 class="font-bold text-lg text-gray-800 mb-2">
+            <i class="fas fa-map-pin text-emerald-600 mr-2"></i>
+            APN: ${apn}
+            ${distance ? `<span class="text-sm font-normal text-emerald-600 ml-2">(${distance.toFixed(2)} mi away)</span>` : ''}
+          </h4>
+          <div class="grid grid-cols-2 gap-2 text-sm mb-2">
+            <div class="text-gray-600">
+              <span class="font-semibold">Owner:</span> ${owner}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">County:</span> ${county}
+            </div>
+            <div class="text-gray-600 col-span-2">
+              <span class="font-semibold">Address:</span> ${address}${city !== 'N/A' ? `, ${city}` : ''}${state ? `, ${state}` : ''} ${zipcode}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Acres:</span> ${acres}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Zoning:</span> ${zoning}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Land Use:</span> ${landUse}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Market Value:</span> $${marketValue.toLocaleString()}
+            </div>
+            ${yearBuilt ? `<div class="text-gray-600"><span class="font-semibold">Year Built:</span> ${yearBuilt}</div>` : ''}
+            ${sqft ? `<div class="text-gray-600"><span class="font-semibold">Sq Ft:</span> ${sqft.toLocaleString()}</div>` : ''}
+          </div>
+          ${parcel.location?.latitude && parcel.location?.longitude ? `
+            <p class="text-xs text-emerald-600 mt-1">
+              <i class="fas fa-map-marker-alt mr-1"></i>
+              ${parcel.location.latitude.toFixed(6)}, ${parcel.location.longitude.toFixed(6)}
+            </p>
+          ` : ''}
+        </div>
+        <button
+          onclick="saveScipParcel('${apn.replace(/'/g, "\\'")}', ${index})"
+          class="ml-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all transform hover:scale-105"
+          title="Save to favorites"
+        >
+          <i class="fas fa-star"></i>
+        </button>
+      </div>
+    </div>
+  `
+}
+
+// Save single SCIP parcel
+async function saveScipParcel(parcelId, index) {
+  const parcel = currentResults[index]
+  const county = parcel.location?.county || 'UNKNOWN'
+  const notes = prompt('Add notes for this property (optional):')
+
+  try {
+    const response = await fetch('/api/parcels/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        parcelId,
+        county,
+        parcelData: parcel,
+        notes
+      })
+    })
+
+    const data = await response.json()
+
+    if (data.success) {
+      alert('✅ Property saved to favorites!')
+      loadStats()
+    } else {
+      throw new Error('Failed to save')
+    }
+  } catch (error) {
+    alert(`❌ Failed to save property: ${error.message}`)
+  }
+}
+
+// Save all SCIP parcels
+async function saveAllScipParcels(siteName, lat, lon, radius) {
+  if (!currentResults || currentResults.length === 0) {
+    alert('No properties to save')
+    return
+  }
+
+  const notes = siteName
+    ? `SCIP Site: ${siteName} (${lat}, ${lon}, ${radius}mi radius)`
+    : `SCIP search: ${lat}, ${lon}, ${radius}mi`
+
+  let saved = 0
+  let errors = 0
+
+  showLoading(true, `Saving ${currentResults.length} properties...`)
+
+  for (const parcel of currentResults) {
+    const apn = parcel.identifiers?.apn || `ATTOM-${parcel.identifiers?.attom_id}`
+    const county = parcel.location?.county || 'UNKNOWN'
+    try {
+      const response = await fetch('/api/parcels/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parcelId: apn,
+          county,
+          parcelData: parcel,
+          notes
+        })
+      })
+      if (response.ok) saved++
+      else errors++
+    } catch (error) {
+      errors++
+    }
+  }
+
+  showLoading(false)
+  alert(`✅ Saved ${saved} properties${errors > 0 ? `\n⚠️ ${errors} failed to save` : ''}`)
+  loadStats()
+}
+
+// Clear SCIP search form
+function clearScipSearch() {
+  document.getElementById('scipLat').value = ''
+  document.getElementById('scipLon').value = ''
+  document.getElementById('scipRadius').value = '0.50'
+  document.getElementById('scipSiteName').value = ''
   document.getElementById('results').innerHTML = ''
   currentResults = []
 }

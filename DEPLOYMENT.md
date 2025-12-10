@@ -86,6 +86,13 @@ npx wrangler pages secret put MAPWISE_API_KEY --project-name mapdog
 # When prompted, paste: d7e8121ef5e0324b8e009fb179bd20aaa062317adb5ce7780c82e3841263090d
 ```
 
+### Set ATTOM Data API Key Secret (for SCIP Property Search)
+```bash
+npx wrangler pages secret put ATTOM_API_KEY --project-name mapdog
+# When prompted, paste your ATTOM API key
+# Login: https://api.developer.attomdata.com/login
+```
+
 ### Create Cloudflare Pages Project
 ```bash
 npx wrangler pages project create mapdog \
@@ -206,12 +213,15 @@ Once deployed, your URLs will be:
 - **API Endpoints**: `https://mapdog.pages.dev/api/*`
 
 ### API Endpoints
-- `GET /api/parcels/search?county=ALACHUA&limit=10`
-- `POST /api/parcels/save`
-- `GET /api/parcels/saved`
-- `DELETE /api/parcels/saved/:id`
-- `GET /api/searches/history`
-- `GET /api/stats`
+- `GET /api/parcels/search?county=ALACHUA&limit=10` - County parcel search (MapWise)
+- `POST /api/parcels/coordinate-search` - RF coordinate search (MapWise)
+- `POST /api/parcels/bulk-search` - Bulk PIN lookup (MapWise)
+- `POST /api/parcels/scip-search` - SCIP property search by radius (ATTOM Data)
+- `POST /api/parcels/save` - Save parcel to favorites
+- `GET /api/parcels/saved` - Get saved parcels
+- `DELETE /api/parcels/saved/:id` - Delete saved parcel
+- `GET /api/searches/history` - Search history
+- `GET /api/stats` - Dashboard statistics
 
 ---
 
