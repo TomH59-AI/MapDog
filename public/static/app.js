@@ -580,9 +580,14 @@ function renderScipCandidateCard(candidate, index) {
           <p class="text-gray-900 pl-2">Longitude: ${candidate.coordinates?.longitude || 'N/A'}</p>
         </div>
 
-        <div class="grid grid-cols-1 gap-1">
-          <p><span class="font-semibold text-gray-700">FEMA Risk Factor Letter:</span></p>
-          <p class="text-gray-900 pl-2">${candidate.femaRiskFactor || 'Check FEMA flood maps'}</p>
+        <div class="grid grid-cols-1 gap-1 bg-blue-50 p-2 rounded">
+          <p><span class="font-semibold text-blue-700"><i class="fas fa-water mr-1"></i>FEMA Flood Zone:</span></p>
+          <p class="text-gray-900 pl-2">${candidate.femaFloodZone || 'Checking FEMA...'}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-1 bg-green-50 p-2 rounded">
+          <p><span class="font-semibold text-green-700"><i class="fas fa-leaf mr-1"></i>Wetlands Status:</span></p>
+          <p class="text-gray-900 pl-2">${candidate.wetlandsInfo || 'Checking NWI...'}</p>
         </div>
 
         <div class="grid grid-cols-1 gap-1">
@@ -739,7 +744,8 @@ function exportScipCandidates() {
     exportText += `Zoning Classification:\n${c.zoningClassification || 'N/A'}${c.zoningCode ? ` (Zoning Code: ${c.zoningCode})` : ''}\n\n`
     exportText += `Owner's Mailing Address:\n${c.ownerMailingAddress || 'N/A'}\n\n`
     exportText += `Coordinates:\nLatitude: ${c.coordinates?.latitude || 'N/A'}\nLongitude: ${c.coordinates?.longitude || 'N/A'}\n\n`
-    exportText += `FEMA Risk Factor Letter:\n${c.femaRiskFactor || 'Check FEMA flood maps'}\n\n`
+    exportText += `FEMA Flood Zone:\n${c.femaFloodZone || 'Not available'}\n\n`
+    exportText += `Wetlands Status (USFWS NWI):\n${c.wetlandsInfo || 'Not available'}\n\n`
     exportText += `Phone Number:\n${c.phoneNumber || 'Not provided in source data'}\n\n`
     exportText += `Email Address:\n${c.emailAddress || 'Not provided in source data'}\n\n`
     exportText += '\n'

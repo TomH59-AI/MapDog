@@ -734,6 +734,103 @@ app.post('/api/parcels/scip-search', async (c) => {
       }, 500)
     }
 
+    // Helper function to query FEMA NFHL for flood zone (FREE - no API key needed)
+    const getFemaFloodZone = async (propLat: number, propLon: number): Promise<string> => {
+      try {
+        const femaUrl = `https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query?` +
+          `geometry=${propLon},${propLat}` +
+          `&geometryType=esriGeometryPoint` +
+          `&spatialRel=esriSpatialRelIntersects` +
+          `&outFields=FLD_ZONE,ZONE_SUBTY,SFHA_TF` +
+          `&returnGeometry=false` +
+          `&f=json`
+
+        const femaResponse = await fetch(femaUrl)
+        if (!femaResponse.ok) return 'Unable to retrieve'
+
+        const femaData = await femaResponse.json()
+        const features = femaData.features || []
+
+        if (features.length === 0) return 'Zone X (Minimal Risk)'
+
+        const zone = features[0].attributes?.FLD_ZONE || 'Unknown'
+        const subtype = features[0].attributes?.ZONE_SUBTY || ''
+        const sfha = features[0].attributes?.SFHA_TF === 'T'
+
+        // Build descriptive flood zone string
+        let description = `Zone ${zone}`
+        if (subtype) description += ` (${subtype})`
+        if (sfha) description += ' - Special Flood Hazard Area'
+        else if (zone === 'X') description += ' - Minimal Flood Risk'
+        else if (zone === 'A' || zone === 'AE' || zone === 'AO' || zone === 'AH') {
+          description += ' - High Risk (1% annual chance)'
+        } else if (zone === 'V' || zone === 'VE') {
+          description += ' - Coastal High Risk'
+        }
+
+        return description
+      } catch (error) {
+        console.error('FEMA API error:', error)
+        return 'Unable to retrieve'
+      }
+    }
+
+    // Helper function to query USFWS National Wetlands Inventory (FREE - no API key needed)
+    const getWetlandsInfo = async (propLat: number, propLon: number): Promise<string> => {
+      try {
+        // Query wetlands within a small buffer around the property (0.001 degrees ~ 100m)
+        const buffer = 0.001
+        const bbox = `${propLon - buffer},${propLat - buffer},${propLon + buffer},${propLat + buffer}`
+
+        const wetlandsUrl = `https://www.fws.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/0/query?` +
+          `geometry=${propLon},${propLat}` +
+          `&geometryType=esriGeometryPoint` +
+          `&spatialRel=esriSpatialRelIntersects` +
+          `&outFields=WETLAND_TYPE,ATTRIBUTE` +
+          `&returnGeometry=false` +
+          `&f=json`
+
+        const wetlandsResponse = await fetch(wetlandsUrl)
+        if (!wetlandsResponse.ok) return 'No wetlands data'
+
+        const wetlandsData = await wetlandsResponse.json()
+        const features = wetlandsData.features || []
+
+        if (features.length === 0) return 'No wetlands identified'
+
+        // Parse wetland types
+        const wetlandTypes = features.map((f: any) => {
+          const type = f.attributes?.WETLAND_TYPE || f.attributes?.ATTRIBUTE || 'Unknown'
+          return type
+        })
+
+        // Get unique wetland types
+        const uniqueTypes = [...new Set(wetlandTypes)]
+
+        // Translate NWI codes to human-readable descriptions
+        const translateCode = (code: string): string => {
+          if (code.startsWith('PEM')) return 'Palustrine Emergent Wetland'
+          if (code.startsWith('PFO')) return 'Palustrine Forested Wetland'
+          if (code.startsWith('PSS')) return 'Palustrine Scrub-Shrub Wetland'
+          if (code.startsWith('PUB')) return 'Palustrine Unconsolidated Bottom'
+          if (code.startsWith('PAB')) return 'Palustrine Aquatic Bed'
+          if (code.startsWith('POW')) return 'Palustrine Open Water'
+          if (code.startsWith('L')) return 'Lacustrine (Lake)'
+          if (code.startsWith('R')) return 'Riverine (River/Stream)'
+          if (code.startsWith('E')) return 'Estuarine (Coastal)'
+          if (code.startsWith('M')) return 'Marine'
+          return code
+        }
+
+        const descriptions = uniqueTypes.slice(0, 3).map(translateCode)
+        return descriptions.join('; ') || 'Wetland present - check NWI maps'
+
+      } catch (error) {
+        console.error('USFWS Wetlands API error:', error)
+        return 'Unable to retrieve'
+      }
+    }
+
     // Search at 1 mile radius (will capture all 3 rings)
     const attomUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/snapshot?latitude=${latitude}&longitude=${longitude}&radius=1&pagesize=100&orderby=distance`
 
@@ -749,7 +846,6 @@ app.post('/api/parcels/scip-search', async (c) => {
     // Handle non-200 HTTP status codes
     if (!response.ok) {
       const statusCode = response.status
-      let errorMessage = 'ATTOM API error'
       let userMessage = 'Failed to search properties'
 
       switch (statusCode) {
@@ -779,7 +875,7 @@ app.post('/api/parcels/scip-search', async (c) => {
     const data = await response.json()
     const properties = data.property || []
 
-    // Transform and categorize by ring distance
+    // Transform property data
     const transformProperty = (prop: any) => ({
       // Core identifiers
       parcelId: prop.identifier?.apn || prop.identifier?.attomId || 'N/A',
@@ -826,8 +922,9 @@ app.post('/api/parcels/scip-search', async (c) => {
       phoneNumber: 'Not provided in source data',
       emailAddress: 'Not provided in source data',
 
-      // Risk (placeholder - ATTOM has separate hazard API)
-      femaRiskFactor: 'Check FEMA flood maps'
+      // FEMA flood zone and wetlands will be populated separately
+      femaFloodZone: 'Pending lookup...',
+      wetlandsInfo: 'Pending lookup...'
     })
 
     // Categorize properties by ring
@@ -858,11 +955,43 @@ app.post('/api/parcels/scip-search', async (c) => {
     }
 
     // Get top candidates from each ring
-    const topCandidates = [
+    const topCandidatesRaw = [
       ...ring025.sort((a: any, b: any) => rankCandidate(b) - rankCandidate(a)).slice(0, 2),
       ...ring050.sort((a: any, b: any) => rankCandidate(b) - rankCandidate(a)).slice(0, 1),
       ...ring100.sort((a: any, b: any) => rankCandidate(b) - rankCandidate(a)).slice(0, 1)
     ].slice(0, 4) // Max 4 candidates
+
+    // Fetch FEMA flood zone and wetlands data for each top candidate
+    console.log(`Fetching environmental data for ${topCandidatesRaw.length} candidates...`)
+
+    const topCandidates = await Promise.all(
+      topCandidatesRaw.map(async (candidate: any) => {
+        const lat = candidate.coordinates?.latitude
+        const lon = candidate.coordinates?.longitude
+
+        if (lat && lon) {
+          // Fetch FEMA and Wetlands data in parallel
+          const [floodZone, wetlands] = await Promise.all([
+            getFemaFloodZone(lat, lon),
+            getWetlandsInfo(lat, lon)
+          ])
+
+          return {
+            ...candidate,
+            femaFloodZone: floodZone,
+            wetlandsInfo: wetlands
+          }
+        }
+
+        return {
+          ...candidate,
+          femaFloodZone: 'Coordinates unavailable',
+          wetlandsInfo: 'Coordinates unavailable'
+        }
+      })
+    )
+
+    console.log(`Environmental data fetched for ${topCandidates.length} candidates`)
 
     // Save search to database
     try {
