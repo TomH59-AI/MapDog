@@ -227,13 +227,13 @@ app.get('/', (c) => {
             </label>
             <p class="text-sm text-gray-600 mb-3 bg-emerald-50 p-2 rounded">
               <i class="fas fa-info-circle mr-1"></i>
-              Find properties within 0.50 mile radius using ATTOM Data API
+              Find top 3-4 tower site candidates within 3 search rings (0.25mi, 0.50mi, 1.0mi)
             </p>
             <div class="mb-3">
               <input
                 type="text"
                 id="scipSiteName"
-                placeholder="Site Name (e.g., Tower Site Alpha)"
+                placeholder="Site Name (e.g., Durham Tower Alpha)"
                 class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none"
               />
             </div>
@@ -241,35 +241,30 @@ app.get('/', (c) => {
               <input
                 type="text"
                 id="scipLat"
-                placeholder="Latitude (e.g., 28.5383)"
+                placeholder="Latitude (e.g., 35.965948)"
                 class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none"
               />
               <input
                 type="text"
                 id="scipLon"
-                placeholder="Longitude (e.g., -81.3792)"
+                placeholder="Longitude (e.g., -78.810527)"
                 class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none"
               />
             </div>
-            <div class="mb-3">
-              <label class="text-sm text-gray-600 mb-1 block">Search Radius (miles)</label>
-              <input
-                type="number"
-                id="scipRadius"
-                placeholder="0.50"
-                value="0.50"
-                min="0.1"
-                max="10"
-                step="0.1"
-                class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none"
-              />
+            <div class="mb-3 p-3 bg-gray-100 rounded-lg">
+              <p class="text-sm font-semibold text-gray-700 mb-2">Search Rings:</p>
+              <div class="flex gap-4 text-sm">
+                <span class="px-2 py-1 bg-red-100 text-red-700 rounded">0.25 mi</span>
+                <span class="px-2 py-1 bg-yellow-100 text-yellow-700 rounded">0.50 mi</span>
+                <span class="px-2 py-1 bg-green-100 text-green-700 rounded">1.0 mi</span>
+              </div>
             </div>
             <div class="flex gap-3">
               <button
                 onclick="scipSearch()"
                 class="flex-1 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition-all transform hover:scale-105 shadow-lg"
               >
-                <i class="fas fa-search-location mr-2"></i>Find Properties
+                <i class="fas fa-search-location mr-2"></i>Find Candidates
               </button>
               <button
                 onclick="clearScipSearch()"
@@ -280,7 +275,7 @@ app.get('/', (c) => {
             </div>
             <p class="text-xs text-gray-500 mt-2">
               <i class="fas fa-database mr-1"></i>
-              Powered by ATTOM Data • Returns property details with coordinates
+              Powered by ATTOM Data • Returns top candidates ranked by parcel size and zoning
             </p>
           </div>
 
@@ -699,10 +694,10 @@ app.post('/api/parcels/bulk-search', async (c) => {
 })
 
 // API: SCIP - Search Coordinate In Property (ATTOM Data API)
-// Searches for properties within a radius of center point coordinates
+// Searches for properties within 3 concentric radii: 0.25mi, 0.50mi, 1.0mi
 app.post('/api/parcels/scip-search', async (c) => {
   try {
-    const { lat, lon, radius, siteName } = await c.req.json()
+    const { lat, lon, siteName } = await c.req.json()
 
     // Validate inputs
     if (!lat || !lon) {
@@ -714,7 +709,6 @@ app.post('/api/parcels/scip-search', async (c) => {
 
     const latitude = parseFloat(lat)
     const longitude = parseFloat(lon)
-    const searchRadius = parseFloat(radius) || 0.5 // Default to 0.5 miles
 
     if (isNaN(latitude) || isNaN(longitude)) {
       return c.json({
@@ -731,14 +725,6 @@ app.post('/api/parcels/scip-search', async (c) => {
       return c.json({ error: 'Longitude must be between -180 and 180' }, 400)
     }
 
-    // Validate radius (max 10 miles for performance)
-    if (searchRadius <= 0 || searchRadius > 10) {
-      return c.json({
-        error: 'Invalid radius',
-        hint: 'Radius must be between 0.1 and 10 miles'
-      }, 400)
-    }
-
     const apiKey = c.env.ATTOM_API_KEY
 
     if (!apiKey) {
@@ -748,10 +734,10 @@ app.post('/api/parcels/scip-search', async (c) => {
       }, 500)
     }
 
-    // Call ATTOM Property API with radius search
-    const attomUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/snapshot?latitude=${latitude}&longitude=${longitude}&radius=${searchRadius}&pagesize=50`
+    // Search at 1 mile radius (will capture all 3 rings)
+    const attomUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/snapshot?latitude=${latitude}&longitude=${longitude}&radius=1&pagesize=100&orderby=distance`
 
-    console.log(`SCIP Search: ${latitude}, ${longitude}, ${searchRadius}mi`)
+    console.log(`SCIP Search: ${latitude}, ${longitude}, 3 rings (0.25, 0.50, 1.0 mi)`)
 
     const response = await fetch(attomUrl, {
       headers: {
@@ -768,106 +754,115 @@ app.post('/api/parcels/scip-search', async (c) => {
 
       switch (statusCode) {
         case 400:
-          errorMessage = 'Bad request - invalid parameters'
           userMessage = 'Invalid search parameters. Please check coordinates.'
           break
         case 401:
-          errorMessage = 'Unauthorized - invalid API key'
           userMessage = 'ATTOM API authentication failed. Please verify API key.'
           break
         case 403:
-          errorMessage = 'Forbidden - access denied'
           userMessage = 'Access denied. Please check your ATTOM subscription.'
           break
         case 404:
-          errorMessage = 'Not found - no data available'
           userMessage = 'No properties found in this area.'
           break
         case 429:
-          errorMessage = 'Rate limit exceeded'
           userMessage = 'Too many requests. Please wait a moment and try again.'
           break
-        case 500:
-        case 502:
-        case 503:
-        case 504:
-          errorMessage = 'ATTOM server error'
-          userMessage = 'ATTOM service temporarily unavailable. Please try again later.'
-          break
         default:
-          errorMessage = `HTTP ${statusCode} error`
           userMessage = 'An unexpected error occurred. Please try again.'
       }
 
-      console.error(`ATTOM API Error: ${statusCode} - ${errorMessage}`)
-
-      return c.json({
-        error: userMessage,
-        statusCode,
-        details: errorMessage
-      }, statusCode >= 500 ? 503 : statusCode)
+      console.error(`ATTOM API Error: ${statusCode}`)
+      return c.json({ error: userMessage, statusCode }, statusCode >= 500 ? 503 : statusCode)
     }
 
     const data = await response.json()
-
-    // ATTOM returns property array
     const properties = data.property || []
-    const recordCount = properties.length
 
-    // Transform ATTOM data to a consistent format
-    const results = properties.map((prop: any) => ({
-      identifiers: {
-        attom_id: prop.identifier?.attomId,
-        apn: prop.identifier?.apn,
-        fips: prop.identifier?.fips
+    // Transform and categorize by ring distance
+    const transformProperty = (prop: any) => ({
+      // Core identifiers
+      parcelId: prop.identifier?.apn || prop.identifier?.attomId || 'N/A',
+      attomId: prop.identifier?.attomId,
+      fips: prop.identifier?.fips,
+
+      // Owner information
+      ownerName: [prop.owner?.[0]?.fullName, prop.owner?.[1]?.fullName]
+        .filter(Boolean).join(' and ') || 'N/A',
+      ownerMailingAddress: prop.owner?.[0]?.mailAddressOneLine ||
+        `${prop.owner?.[0]?.mailAddressHouse || ''} ${prop.owner?.[0]?.mailAddressStreet || ''}, ${prop.owner?.[0]?.mailAddressCity || ''}, ${prop.owner?.[0]?.mailAddressState || ''} ${prop.owner?.[0]?.mailAddressZip || ''}`.trim() || 'N/A',
+
+      // Parcel address
+      parcelAddress: prop.address?.oneLine ||
+        `${prop.address?.line1 || ''}, ${prop.address?.locality || ''}, ${prop.address?.countrySubd || ''} ${prop.address?.postal1 || ''}`.trim() || 'N/A',
+      city: prop.address?.locality || 'N/A',
+      state: prop.address?.countrySubd || 'N/A',
+      zipcode: prop.address?.postal1 || 'N/A',
+      county: prop.area?.countrySecSubd || 'N/A',
+
+      // Land details
+      parcelSizeAcres: prop.lot?.lotSize1 ? (prop.lot.lotSize1 / 43560).toFixed(2) : 'N/A',
+      lotSqFt: prop.lot?.lotSize1 || null,
+      zoningClassification: prop.lot?.zoning || 'N/A',
+      zoningCode: prop.lot?.zoningCode || null,
+      landUse: prop.summary?.propClass || prop.summary?.propSubType || 'N/A',
+
+      // Coordinates
+      coordinates: {
+        latitude: prop.location?.latitude || null,
+        longitude: prop.location?.longitude || null
       },
-      location: {
-        latitude: prop.location?.latitude,
-        longitude: prop.location?.longitude,
-        distance: prop.location?.distance,
-        address: prop.address?.oneLine || '',
-        street: prop.address?.line1 || '',
-        city: prop.address?.locality || '',
-        state: prop.address?.countrySubd || '',
-        zipcode: prop.address?.postal1 || '',
-        county: prop.area?.countrySecSubd || ''
-      },
-      owner: {
-        primary_name: prop.owner?.[0]?.fullName || 'N/A',
-        owner1: prop.owner?.[0]?.fullName,
-        owner2: prop.owner?.[1]?.fullName
-      },
-      land: {
-        acres: prop.lot?.lotSize1 ? (prop.lot.lotSize1 / 43560).toFixed(2) : null,
-        lot_sqft: prop.lot?.lotSize1,
-        lot_size2: prop.lot?.lotSize2,
-        zoning: prop.lot?.zoning || 'N/A',
-        land_use: prop.summary?.propClass || prop.summary?.propSubType || 'N/A'
-      },
-      building: {
-        year_built: prop.summary?.yearBuilt,
-        sqft: prop.building?.size?.livingSize,
-        bedrooms: prop.building?.rooms?.beds,
-        bathrooms: prop.building?.rooms?.bathsTotal,
-        stories: prop.building?.summary?.levels
-      },
-      valuation: {
-        market_total: prop.assessment?.assessed?.assdTtlValue,
-        market_land: prop.assessment?.market?.mktLandValue,
-        market_improvement: prop.assessment?.market?.mktImprValue,
-        tax_amount: prop.assessment?.tax?.taxAmt
-      },
-      sale: {
-        last_sale_date: prop.sale?.salesHistory?.[0]?.saleTransDate,
-        last_sale_price: prop.sale?.salesHistory?.[0]?.saleAmt
-      },
-      _searchRing: {
-        centerLat: latitude,
-        centerLon: longitude,
-        radiusMiles: searchRadius,
-        siteName: siteName || null
-      }
-    }))
+      distance: prop.location?.distance || 0,
+
+      // Valuation
+      marketValue: prop.assessment?.assessed?.assdTtlValue || null,
+      landValue: prop.assessment?.market?.mktLandValue || null,
+
+      // Building info
+      yearBuilt: prop.summary?.yearBuilt || null,
+      buildingSqFt: prop.building?.size?.livingSize || null,
+
+      // Contact (usually not in ATTOM data)
+      phoneNumber: 'Not provided in source data',
+      emailAddress: 'Not provided in source data',
+
+      // Risk (placeholder - ATTOM has separate hazard API)
+      femaRiskFactor: 'Check FEMA flood maps'
+    })
+
+    // Categorize properties by ring
+    const ring025 = properties
+      .filter((p: any) => (p.location?.distance || 0) <= 0.25)
+      .map(transformProperty)
+
+    const ring050 = properties
+      .filter((p: any) => (p.location?.distance || 0) > 0.25 && (p.location?.distance || 0) <= 0.50)
+      .map(transformProperty)
+
+    const ring100 = properties
+      .filter((p: any) => (p.location?.distance || 0) > 0.50 && (p.location?.distance || 0) <= 1.0)
+      .map(transformProperty)
+
+    // Select best candidates (prefer larger parcels with good zoning)
+    const rankCandidate = (p: any) => {
+      let score = 0
+      const acres = parseFloat(p.parcelSizeAcres) || 0
+      score += acres * 10 // Larger parcels score higher
+      if (p.landUse?.toLowerCase().includes('vacant')) score += 50
+      if (p.landUse?.toLowerCase().includes('agricultural')) score += 40
+      if (p.landUse?.toLowerCase().includes('commercial')) score += 30
+      if (p.landUse?.toLowerCase().includes('industrial')) score += 30
+      if (p.zoningClassification?.toLowerCase().includes('rural')) score += 20
+      score -= (p.distance || 0) * 10 // Closer is better
+      return score
+    }
+
+    // Get top candidates from each ring
+    const topCandidates = [
+      ...ring025.sort((a: any, b: any) => rankCandidate(b) - rankCandidate(a)).slice(0, 2),
+      ...ring050.sort((a: any, b: any) => rankCandidate(b) - rankCandidate(a)).slice(0, 1),
+      ...ring100.sort((a: any, b: any) => rankCandidate(b) - rankCandidate(a)).slice(0, 1)
+    ].slice(0, 4) // Max 4 candidates
 
     // Save search to database
     try {
@@ -879,26 +874,32 @@ app.post('/api/parcels/scip-search', async (c) => {
           type: 'scip',
           lat: latitude,
           lon: longitude,
-          radius: searchRadius,
+          rings: [0.25, 0.50, 1.0],
           siteName
         }),
-        recordCount
+        topCandidates.length
       ).run()
     } catch (dbError) {
       console.error('Database save error:', dbError)
     }
 
-    console.log(`SCIP Search found ${recordCount} properties`)
+    console.log(`SCIP Search found ${properties.length} total, ${topCandidates.length} candidates`)
 
     return c.json({
       success: true,
-      results,
+      candidates: topCandidates,
+      rings: {
+        ring025: { radius: 0.25, count: ring025.length, properties: ring025 },
+        ring050: { radius: 0.50, count: ring050.length, properties: ring050 },
+        ring100: { radius: 1.0, count: ring100.length, properties: ring100 }
+      },
       meta: {
         centerLat: latitude,
         centerLon: longitude,
-        radiusMiles: searchRadius,
         siteName: siteName || null,
-        total: recordCount,
+        totalProperties: properties.length,
+        candidateCount: topCandidates.length,
+        searchRadii: [0.25, 0.50, 1.0],
         source: 'ATTOM Data'
       }
     })

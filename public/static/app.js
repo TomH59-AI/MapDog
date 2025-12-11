@@ -380,15 +380,15 @@ function clearBulkSearch() {
 }
 
 // SCIP - Search Coordinate In Property (ATTOM Data API)
+// Searches 3 concentric rings: 0.25mi, 0.50mi, 1.0mi
 async function scipSearch() {
   const lat = document.getElementById('scipLat').value.trim()
   const lon = document.getElementById('scipLon').value.trim()
-  const radius = document.getElementById('scipRadius').value.trim() || '0.50'
   const siteName = document.getElementById('scipSiteName').value.trim()
 
   // Validate inputs
   if (!lat || !lon) {
-    alert('⚠️ Please enter latitude and longitude\n\nGet these from your search ring coordinates')
+    alert('⚠️ Please enter latitude and longitude\n\nGet these from your search ring center coordinates')
     return
   }
 
@@ -410,18 +410,13 @@ async function scipSearch() {
     return
   }
 
-  showLoading(true, `Searching ${radius} mile radius for properties...`)
+  showLoading(true, 'Searching 3 rings (0.25mi, 0.50mi, 1.0mi) for tower site candidates...')
 
   try {
     const response = await fetch('/api/parcels/scip-search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        lat,
-        lon,
-        radius,
-        siteName
-      })
+      body: JSON.stringify({ lat, lon, siteName })
     })
 
     const data = await response.json()
@@ -430,7 +425,7 @@ async function scipSearch() {
       throw new Error(data.error + (data.hint ? '\n\n💡 ' + data.hint : ''))
     }
 
-    currentResults = data.results || []
+    currentResults = data.candidates || []
     displayScipResults(data, siteName)
     loadStats()
 
@@ -441,24 +436,42 @@ async function scipSearch() {
   }
 }
 
-// Display SCIP search results
+// Display SCIP search results with map and candidate cards
 function displayScipResults(data, siteName) {
   const resultsDiv = document.getElementById('results')
   const meta = data.meta || {}
-  const found = meta.total || 0
+  const candidates = data.candidates || []
+  const rings = data.rings || {}
 
-  if (found === 0) {
+  if (candidates.length === 0) {
     resultsDiv.innerHTML = `
       <div class="text-center py-8 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
         <i class="fas fa-bullseye text-yellow-600 text-4xl mb-3"></i>
-        <p class="text-lg font-semibold text-gray-800">No properties found</p>
+        <p class="text-lg font-semibold text-gray-800">No tower site candidates found</p>
         <p class="text-sm text-gray-600 mt-2">Center: ${meta.centerLat}, ${meta.centerLon}</p>
-        <p class="text-sm text-gray-600">Radius: ${meta.radiusMiles} miles</p>
-        <p class="text-xs text-gray-500 mt-2">Try a larger radius or different coordinates</p>
+        <p class="text-xs text-gray-500 mt-2">Try different coordinates in a more developed area</p>
       </div>
     `
     return
   }
+
+  // Build ring summary
+  const ringSummary = `
+    <div class="grid grid-cols-3 gap-2 mt-3">
+      <div class="text-center p-2 bg-red-100 rounded">
+        <span class="font-bold text-red-700">${rings.ring025?.count || 0}</span>
+        <p class="text-xs text-red-600">0.25 mi</p>
+      </div>
+      <div class="text-center p-2 bg-yellow-100 rounded">
+        <span class="font-bold text-yellow-700">${rings.ring050?.count || 0}</span>
+        <p class="text-xs text-yellow-600">0.50 mi</p>
+      </div>
+      <div class="text-center p-2 bg-green-100 rounded">
+        <span class="font-bold text-green-700">${rings.ring100?.count || 0}</span>
+        <p class="text-xs text-green-600">1.0 mi</p>
+      </div>
+    </div>
+  `
 
   resultsDiv.innerHTML = `
     <div class="mb-4 p-4 bg-emerald-50 border-2 border-emerald-300 rounded-lg">
@@ -466,32 +479,285 @@ function displayScipResults(data, siteName) {
         <div class="flex-1">
           <h3 class="text-xl font-bold text-gray-800">
             <i class="fas fa-bullseye text-emerald-600 mr-2"></i>
-            SCIP Property Results
+            SCIP Tower Site Candidates
           </h3>
           ${siteName ? `<p class="text-sm font-semibold text-emerald-700 mt-1">${siteName}</p>` : ''}
           <div class="grid grid-cols-2 gap-3 mt-3 text-sm">
-            <div><span class="font-semibold">Center:</span> ${meta.centerLat.toFixed(6)}, ${meta.centerLon.toFixed(6)}</div>
-            <div><span class="font-semibold">Radius:</span> ${meta.radiusMiles} miles</div>
-            <div><span class="font-semibold">Source:</span> ${meta.source || 'ATTOM Data'}</div>
-            <div><span class="font-semibold text-green-600">Properties:</span> ${found}</div>
+            <div><span class="font-semibold">Center:</span> ${meta.centerLat?.toFixed(6) || 'N/A'}, ${meta.centerLon?.toFixed(6) || 'N/A'}</div>
+            <div><span class="font-semibold">Total Found:</span> ${meta.totalProperties || 0}</div>
           </div>
+          ${ringSummary}
         </div>
         <button
-          onclick="saveAllScipParcels('${siteName}', ${meta.centerLat}, ${meta.centerLon}, ${meta.radiusMiles})"
-          class="ml-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all"
-          title="Save all to favorites"
+          onclick="exportScipCandidates()"
+          class="ml-4 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-all"
+          title="Export candidates"
         >
-          <i class="fas fa-save mr-2"></i>Save All
+          <i class="fas fa-download mr-2"></i>Export
         </button>
       </div>
     </div>
-    <div class="space-y-3 max-h-96 overflow-y-auto">
-      ${currentResults.map((parcel, index) => renderScipParcelCard(parcel, index)).join('')}
+
+    <!-- Map Container -->
+    <div id="scipMap" class="w-full h-64 rounded-lg border-2 border-gray-300 mb-4" style="background: #e5e7eb;">
+      <div class="flex items-center justify-center h-full text-gray-500">
+        <i class="fas fa-map mr-2"></i>
+        <span>Map: Center (${meta.centerLat?.toFixed(4) || 'N/A'}, ${meta.centerLon?.toFixed(4) || 'N/A'}) with 3 search rings</span>
+      </div>
+    </div>
+
+    <!-- Top Candidates -->
+    <h4 class="text-lg font-bold text-gray-800 mb-3">
+      <i class="fas fa-trophy text-yellow-500 mr-2"></i>
+      Top ${candidates.length} Candidates (Ranked by Size & Zoning)
+    </h4>
+    <div class="space-y-4">
+      ${candidates.map((candidate, index) => renderScipCandidateCard(candidate, index)).join('')}
+    </div>
+  `
+
+  // Initialize map if Leaflet is available
+  initScipMap(meta.centerLat, meta.centerLon, candidates)
+}
+
+// Render SCIP candidate card in the exact format specified
+function renderScipCandidateCard(candidate, index) {
+  const ringColor = candidate.distance <= 0.25 ? 'red' : candidate.distance <= 0.50 ? 'yellow' : 'green'
+  const ringLabel = candidate.distance <= 0.25 ? '0.25 mi ring' : candidate.distance <= 0.50 ? '0.50 mi ring' : '1.0 mi ring'
+
+  return `
+    <div class="bg-white border-2 border-gray-300 rounded-lg p-5 shadow-md hover:shadow-lg transition-all">
+      <div class="flex justify-between items-start mb-4">
+        <div>
+          <span class="inline-block px-2 py-1 text-xs font-bold rounded bg-${ringColor}-100 text-${ringColor}-700 mb-2">
+            #${index + 1} - ${ringLabel}
+          </span>
+          <h4 class="text-lg font-bold text-gray-800">Candidate ${index + 1}</h4>
+        </div>
+        <button
+          onclick="saveScipCandidate(${index})"
+          class="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all"
+          title="Save candidate"
+        >
+          <i class="fas fa-star"></i>
+        </button>
+      </div>
+
+      <div class="space-y-2 text-sm">
+        <div class="grid grid-cols-1 gap-1">
+          <p><span class="font-semibold text-gray-700">Owner's Name:</span></p>
+          <p class="text-gray-900 pl-2">${candidate.ownerName || 'N/A'}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-1">
+          <p><span class="font-semibold text-gray-700">Parcel Address:</span></p>
+          <p class="text-gray-900 pl-2">${candidate.parcelAddress || 'N/A'}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-1">
+          <p><span class="font-semibold text-gray-700">Parcel ID:</span></p>
+          <p class="text-gray-900 pl-2">${candidate.parcelId || 'N/A'}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-1">
+          <p><span class="font-semibold text-gray-700">Parcel Size (acres):</span></p>
+          <p class="text-gray-900 pl-2">${candidate.parcelSizeAcres || 'N/A'}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-1">
+          <p><span class="font-semibold text-gray-700">Zoning Classification:</span></p>
+          <p class="text-gray-900 pl-2">${candidate.zoningClassification || 'N/A'}${candidate.zoningCode ? ` (Zoning Code: ${candidate.zoningCode})` : ''}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-1">
+          <p><span class="font-semibold text-gray-700">Owner's Mailing Address:</span></p>
+          <p class="text-gray-900 pl-2">${candidate.ownerMailingAddress || 'N/A'}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-1">
+          <p><span class="font-semibold text-gray-700">Coordinates:</span></p>
+          <p class="text-gray-900 pl-2">Latitude: ${candidate.coordinates?.latitude || 'N/A'}</p>
+          <p class="text-gray-900 pl-2">Longitude: ${candidate.coordinates?.longitude || 'N/A'}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-1">
+          <p><span class="font-semibold text-gray-700">FEMA Risk Factor Letter:</span></p>
+          <p class="text-gray-900 pl-2">${candidate.femaRiskFactor || 'Check FEMA flood maps'}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-1">
+          <p><span class="font-semibold text-gray-700">Phone Number:</span></p>
+          <p class="text-gray-900 pl-2">${candidate.phoneNumber || 'Not provided in source data'}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-1">
+          <p><span class="font-semibold text-gray-700">Email Address:</span></p>
+          <p class="text-gray-900 pl-2">${candidate.emailAddress || 'Not provided in source data'}</p>
+        </div>
+
+        <div class="mt-3 pt-3 border-t border-gray-200">
+          <p class="text-xs text-gray-500">
+            <i class="fas fa-ruler mr-1"></i>Distance from center: ${candidate.distance?.toFixed(3) || 'N/A'} miles
+            ${candidate.landUse ? ` | Land Use: ${candidate.landUse}` : ''}
+          </p>
+        </div>
+      </div>
     </div>
   `
 }
 
-// Render SCIP parcel card
+// Initialize SCIP map with Leaflet
+function initScipMap(centerLat, centerLon, candidates) {
+  // Check if Leaflet is loaded
+  if (typeof L === 'undefined') {
+    // Load Leaflet dynamically
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+    document.head.appendChild(link)
+
+    const script = document.createElement('script')
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    script.onload = () => createScipMap(centerLat, centerLon, candidates)
+    document.head.appendChild(script)
+  } else {
+    createScipMap(centerLat, centerLon, candidates)
+  }
+}
+
+// Create the actual map with circles
+function createScipMap(centerLat, centerLon, candidates) {
+  const mapContainer = document.getElementById('scipMap')
+  if (!mapContainer || !centerLat || !centerLon) return
+
+  mapContainer.innerHTML = '' // Clear placeholder
+
+  const map = L.map('scipMap').setView([centerLat, centerLon], 13)
+
+  // Add tile layer
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map)
+
+  // Add center marker
+  L.marker([centerLat, centerLon])
+    .addTo(map)
+    .bindPopup('<b>Search Ring Center</b>')
+
+  // Draw concentric circles (miles to meters: 1 mile = 1609.34 meters)
+  L.circle([centerLat, centerLon], {
+    radius: 0.25 * 1609.34,
+    color: '#ef4444',
+    fillColor: '#fca5a5',
+    fillOpacity: 0.2,
+    weight: 2
+  }).addTo(map).bindPopup('0.25 mile radius')
+
+  L.circle([centerLat, centerLon], {
+    radius: 0.50 * 1609.34,
+    color: '#eab308',
+    fillColor: '#fde047',
+    fillOpacity: 0.15,
+    weight: 2
+  }).addTo(map).bindPopup('0.50 mile radius')
+
+  L.circle([centerLat, centerLon], {
+    radius: 1.0 * 1609.34,
+    color: '#22c55e',
+    fillColor: '#86efac',
+    fillOpacity: 0.1,
+    weight: 2
+  }).addTo(map).bindPopup('1.0 mile radius')
+
+  // Add candidate markers
+  candidates.forEach((c, i) => {
+    if (c.coordinates?.latitude && c.coordinates?.longitude) {
+      const markerColor = c.distance <= 0.25 ? 'red' : c.distance <= 0.50 ? 'orange' : 'green'
+      L.circleMarker([c.coordinates.latitude, c.coordinates.longitude], {
+        radius: 8,
+        fillColor: markerColor,
+        color: '#000',
+        weight: 1,
+        fillOpacity: 0.8
+      }).addTo(map)
+        .bindPopup(`<b>Candidate ${i + 1}</b><br>${c.parcelAddress}<br>${c.parcelSizeAcres} acres`)
+    }
+  })
+
+  // Fit bounds to show all circles
+  map.fitBounds([[centerLat - 0.02, centerLon - 0.02], [centerLat + 0.02, centerLon + 0.02]])
+}
+
+// Save single SCIP candidate
+async function saveScipCandidate(index) {
+  const candidate = currentResults[index]
+  if (!candidate) return
+
+  const notes = prompt('Add notes for this candidate (optional):')
+
+  try {
+    const response = await fetch('/api/parcels/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        parcelId: candidate.parcelId,
+        county: candidate.county || 'UNKNOWN',
+        parcelData: candidate,
+        notes: notes || `SCIP Candidate #${index + 1}`
+      })
+    })
+
+    const data = await response.json()
+    if (data.success) {
+      alert('✅ Candidate saved to favorites!')
+      loadStats()
+    } else {
+      throw new Error('Failed to save')
+    }
+  } catch (error) {
+    alert(`❌ Failed to save candidate: ${error.message}`)
+  }
+}
+
+// Export SCIP candidates to text format
+function exportScipCandidates() {
+  if (!currentResults || currentResults.length === 0) {
+    alert('No candidates to export')
+    return
+  }
+
+  let exportText = 'SCIP TOWER SITE CANDIDATES\n'
+  exportText += '=' .repeat(50) + '\n\n'
+
+  currentResults.forEach((c, i) => {
+    exportText += `CANDIDATE ${i + 1}\n`
+    exportText += '-'.repeat(30) + '\n'
+    exportText += `Owner's Name:\n${c.ownerName || 'N/A'}\n\n`
+    exportText += `Parcel Address:\n${c.parcelAddress || 'N/A'}\n\n`
+    exportText += `Parcel ID:\n${c.parcelId || 'N/A'}\n\n`
+    exportText += `Parcel Size (acres):\n${c.parcelSizeAcres || 'N/A'}\n\n`
+    exportText += `Zoning Classification:\n${c.zoningClassification || 'N/A'}${c.zoningCode ? ` (Zoning Code: ${c.zoningCode})` : ''}\n\n`
+    exportText += `Owner's Mailing Address:\n${c.ownerMailingAddress || 'N/A'}\n\n`
+    exportText += `Coordinates:\nLatitude: ${c.coordinates?.latitude || 'N/A'}\nLongitude: ${c.coordinates?.longitude || 'N/A'}\n\n`
+    exportText += `FEMA Risk Factor Letter:\n${c.femaRiskFactor || 'Check FEMA flood maps'}\n\n`
+    exportText += `Phone Number:\n${c.phoneNumber || 'Not provided in source data'}\n\n`
+    exportText += `Email Address:\n${c.emailAddress || 'Not provided in source data'}\n\n`
+    exportText += '\n'
+  })
+
+  // Download as text file
+  const blob = new Blob([exportText], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `scip-candidates-${Date.now()}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
+
+  alert(`✅ Exported ${currentResults.length} candidates`)
+}
+
+// Legacy render function (keep for compatibility)
 function renderScipParcelCard(parcel, index) {
   const apn = parcel.identifiers?.apn || `ATTOM-${parcel.identifiers?.attom_id || index}`
   const owner = parcel.owner?.primary_name || 'N/A'
@@ -638,7 +904,6 @@ async function saveAllScipParcels(siteName, lat, lon, radius) {
 function clearScipSearch() {
   document.getElementById('scipLat').value = ''
   document.getElementById('scipLon').value = ''
-  document.getElementById('scipRadius').value = '0.50'
   document.getElementById('scipSiteName').value = ''
   document.getElementById('results').innerHTML = ''
   currentResults = []
