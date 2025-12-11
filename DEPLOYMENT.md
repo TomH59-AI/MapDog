@@ -100,6 +100,13 @@ npx wrangler pages secret put OPENCELLID_API_KEY --project-name mapdog
 # Get key at: https://opencellid.org (free account)
 ```
 
+### Set Aviation Edge API Key Secret (for Airport Proximity/FAA)
+```bash
+npx wrangler pages secret put AVIATION_EDGE_API_KEY --project-name mapdog
+# When prompted, paste your Aviation Edge API key
+# Get key at: https://aviation-edge.com
+```
+
 ### Create Cloudflare Pages Project
 ```bash
 npx wrangler pages project create mapdog \

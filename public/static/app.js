@@ -605,6 +605,24 @@ function renderScipCandidateCard(candidate, index) {
           ` : ''}
         </div>
 
+        <div class="grid grid-cols-1 gap-1 ${candidate.nearbyAirports?.faaWarning ? 'bg-red-50 border-2 border-red-300' : 'bg-orange-50'} p-2 rounded">
+          <p><span class="font-semibold ${candidate.nearbyAirports?.faaWarning ? 'text-red-700' : 'text-orange-700'}"><i class="fas fa-plane mr-1"></i>Airport Proximity (FAA):</span></p>
+          <p class="text-gray-900 pl-2 text-sm ${candidate.nearbyAirports?.faaWarning ? 'font-bold' : ''}">${candidate.nearbyAirports?.summary || 'Checking Aviation Edge...'}</p>
+          ${candidate.nearbyAirports?.faaWarning ? `
+            <p class="text-red-600 text-xs pl-2 mt-1"><i class="fas fa-exclamation-triangle mr-1"></i>Tower height restrictions may apply for 199'+ structures</p>
+          ` : ''}
+          ${candidate.nearbyAirports?.airports?.length > 0 ? `
+            <div class="mt-2 pl-2 text-xs space-y-1">
+              ${candidate.nearbyAirports.airports.slice(0, 3).map((a, i) => `
+                <div class="flex items-center gap-2 text-gray-600">
+                  <span class="inline-block w-4 h-4 bg-orange-200 rounded-full text-center text-orange-800 font-bold">${i + 1}</span>
+                  <span>${a.distance?.toFixed(1)}mi - ${a.name} (${a.code})</span>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+
         <div class="grid grid-cols-1 gap-1">
           <p><span class="font-semibold text-gray-700">Phone Number:</span></p>
           <p class="text-gray-900 pl-2">${candidate.phoneNumber || 'Not provided in source data'}</p>
@@ -765,6 +783,16 @@ function exportScipCandidates() {
     if (c.nearbyTowers?.towers?.length > 0) {
       c.nearbyTowers.towers.slice(0, 5).forEach((t, i) => {
         exportText += `  ${i + 1}. ${t.distance?.toFixed(2)}mi - ${t.carrier} (${t.radio}) - Cell ID: ${t.cellId}\n`
+      })
+    }
+    exportText += '\n'
+    exportText += `Airport Proximity (FAA Compliance):\n${c.nearbyAirports?.summary || 'Not available'}\n`
+    if (c.nearbyAirports?.faaWarning) {
+      exportText += `  ⚠️ WARNING: FAA notification may be required for structures 199'+\n`
+    }
+    if (c.nearbyAirports?.airports?.length > 0) {
+      c.nearbyAirports.airports.slice(0, 5).forEach((a, i) => {
+        exportText += `  ${i + 1}. ${a.distance?.toFixed(1)}mi - ${a.name} (${a.code}) - ${a.type}\n`
       })
     }
     exportText += '\n'

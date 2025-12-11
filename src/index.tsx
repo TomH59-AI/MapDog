@@ -7,6 +7,7 @@ type Bindings = {
   MAPWISE_API_KEY: string
   ATTOM_API_KEY: string
   OPENCELLID_API_KEY: string
+  AVIATION_EDGE_API_KEY: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -929,6 +930,100 @@ app.post('/api/parcels/scip-search', async (c) => {
       }
     }
 
+    // Helper function to query Aviation Edge for nearby airports (FAA compliance)
+    const getNearbyAirports = async (propLat: number, propLon: number): Promise<{ summary: string; airports: any[]; faaWarning: boolean }> => {
+      try {
+        const aviationKey = c.env.AVIATION_EDGE_API_KEY
+        if (!aviationKey) {
+          return { summary: 'API key not configured', airports: [], faaWarning: false }
+        }
+
+        // Aviation Edge nearby airports endpoint
+        const airportUrl = `https://aviation-edge.com/v2/public/nearby?key=${aviationKey}` +
+          `&lat=${propLat}&lng=${propLon}&distance=50` // Search within 50km (~31 miles)
+
+        const airportResponse = await fetch(airportUrl)
+        if (!airportResponse.ok) {
+          console.error('Aviation Edge API error:', airportResponse.status)
+          return { summary: 'Unable to retrieve airport data', airports: [], faaWarning: false }
+        }
+
+        const airportData = await airportResponse.json()
+
+        // Handle error response
+        if (airportData.error) {
+          return { summary: 'No airport data available', airports: [], faaWarning: false }
+        }
+
+        const airports = Array.isArray(airportData) ? airportData : []
+
+        if (airports.length === 0) {
+          return { summary: 'No airports within 31 miles - FAA clear', airports: [], faaWarning: false }
+        }
+
+        // Calculate distance using haversine
+        const toRadians = (deg: number) => deg * (Math.PI / 180)
+        const haversine = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+          const R = 3959 // Earth radius in miles
+          const dLat = toRadians(lat2 - lat1)
+          const dLon = toRadians(lon2 - lon1)
+          const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2)
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+          return R * c
+        }
+
+        // Process and sort airports by distance
+        const airportsWithDistance = airports.map((airport: any) => {
+          const lat = parseFloat(airport.latitudeAirport) || 0
+          const lon = parseFloat(airport.longitudeAirport) || 0
+          const distance = haversine(propLat, propLon, lat, lon)
+
+          return {
+            name: airport.nameAirport || 'Unknown Airport',
+            code: airport.codeIataAirport || airport.codeIcaoAirport || 'N/A',
+            icao: airport.codeIcaoAirport || 'N/A',
+            city: airport.nameCity || 'Unknown',
+            country: airport.nameCountry || 'Unknown',
+            type: airport.codeIataAirport ? 'Commercial' : 'General Aviation',
+            lat,
+            lon,
+            distance,
+            distanceKm: distance * 1.60934
+          }
+        }).filter((a: any) => a.distance > 0)
+          .sort((a: any, b: any) => a.distance - b.distance)
+
+        // Determine FAA warning level
+        // FAA Part 77 surfaces extend based on runway length and airport type
+        // Generally: within 3 nautical miles (3.45 statute miles) of airport requires notification
+        const closest = airportsWithDistance[0]
+        const faaWarning = closest && closest.distance < 6 // Within 6 miles - caution zone
+
+        // Build summary
+        let summary = ''
+        if (closest) {
+          summary = `Nearest: ${closest.name} (${closest.code}) - ${closest.distance.toFixed(1)} mi`
+          if (faaWarning) {
+            summary += ' ⚠️ FAA NOTIFICATION MAY BE REQUIRED'
+          }
+        } else {
+          summary = 'No airports found nearby'
+        }
+
+        return {
+          summary,
+          airports: airportsWithDistance.slice(0, 5),
+          faaWarning
+        }
+
+      } catch (error) {
+        console.error('Aviation Edge API error:', error)
+        return { summary: 'Unable to retrieve', airports: [], faaWarning: false }
+      }
+    }
+
     // Search at 1 mile radius (will capture all 3 rings)
     const attomUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/snapshot?latitude=${latitude}&longitude=${longitude}&radius=1&pagesize=100&orderby=distance`
 
@@ -1023,7 +1118,8 @@ app.post('/api/parcels/scip-search', async (c) => {
       // Environmental & infrastructure data will be populated separately
       femaFloodZone: 'Pending lookup...',
       wetlandsInfo: 'Pending lookup...',
-      nearbyTowers: { summary: 'Pending lookup...', towers: [] }
+      nearbyTowers: { summary: 'Pending lookup...', towers: [] },
+      nearbyAirports: { summary: 'Pending lookup...', airports: [], faaWarning: false }
     })
 
     // Categorize properties by ring
@@ -1060,7 +1156,7 @@ app.post('/api/parcels/scip-search', async (c) => {
       ...ring100.sort((a: any, b: any) => rankCandidate(b) - rankCandidate(a)).slice(0, 1)
     ].slice(0, 4) // Max 4 candidates
 
-    // Fetch FEMA flood zone, wetlands, and cell tower data for each top candidate
+    // Fetch FEMA flood zone, wetlands, cell tower, and airport data for each top candidate
     console.log(`Fetching environmental & infrastructure data for ${topCandidatesRaw.length} candidates...`)
 
     const topCandidates = await Promise.all(
@@ -1069,18 +1165,20 @@ app.post('/api/parcels/scip-search', async (c) => {
         const lon = candidate.coordinates?.longitude
 
         if (lat && lon) {
-          // Fetch FEMA, Wetlands, and Cell Tower data in parallel
-          const [floodZone, wetlands, towers] = await Promise.all([
+          // Fetch FEMA, Wetlands, Cell Tower, and Airport data in parallel
+          const [floodZone, wetlands, towers, airports] = await Promise.all([
             getFemaFloodZone(lat, lon),
             getWetlandsInfo(lat, lon),
-            getNearbyTowers(lat, lon)
+            getNearbyTowers(lat, lon),
+            getNearbyAirports(lat, lon)
           ])
 
           return {
             ...candidate,
             femaFloodZone: floodZone,
             wetlandsInfo: wetlands,
-            nearbyTowers: towers
+            nearbyTowers: towers,
+            nearbyAirports: airports
           }
         }
 
@@ -1088,7 +1186,8 @@ app.post('/api/parcels/scip-search', async (c) => {
           ...candidate,
           femaFloodZone: 'Coordinates unavailable',
           wetlandsInfo: 'Coordinates unavailable',
-          nearbyTowers: { summary: 'Coordinates unavailable', towers: [] }
+          nearbyTowers: { summary: 'Coordinates unavailable', towers: [] },
+          nearbyAirports: { summary: 'Coordinates unavailable', airports: [], faaWarning: false }
         }
       })
     )
