@@ -6,6 +6,7 @@ type Bindings = {
   DB: D1Database
   MAPWISE_API_KEY: string
   ATTOM_API_KEY: string
+  OPENCELLID_API_KEY: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -831,6 +832,103 @@ app.post('/api/parcels/scip-search', async (c) => {
       }
     }
 
+    // Helper function to query OpenCelliD for nearby cell towers
+    const getNearbyTowers = async (propLat: number, propLon: number): Promise<{ summary: string; towers: any[] }> => {
+      try {
+        const openCellIdKey = c.env.OPENCELLID_API_KEY
+        if (!openCellIdKey) {
+          return { summary: 'API key not configured', towers: [] }
+        }
+
+        // OpenCelliD uses bounding box - search ~1 mile around property
+        // 1 mile ≈ 0.0145 degrees latitude
+        const delta = 0.0145
+        const bbox = `${propLat - delta},${propLon - delta},${propLat + delta},${propLon + delta}`
+
+        const cellUrl = `https://opencellid.org/cell/getInArea?key=${openCellIdKey}` +
+          `&BBOX=${bbox}&format=json&limit=10`
+
+        const cellResponse = await fetch(cellUrl)
+        if (!cellResponse.ok) {
+          console.error('OpenCelliD API error:', cellResponse.status)
+          return { summary: 'Unable to retrieve tower data', towers: [] }
+        }
+
+        const cellData = await cellResponse.json()
+        const cells = cellData.cells || []
+
+        if (cells.length === 0) {
+          return { summary: 'No towers found within 1 mile', towers: [] }
+        }
+
+        // Calculate distance and format towers
+        const toRadians = (deg: number) => deg * (Math.PI / 180)
+        const haversine = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+          const R = 3959 // Earth radius in miles
+          const dLat = toRadians(lat2 - lat1)
+          const dLon = toRadians(lon2 - lon1)
+          const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2)
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+          return R * c
+        }
+
+        // Map MCC to country/carrier info
+        const getCarrierInfo = (mcc: number, mnc: number): string => {
+          // US carriers (MCC 310, 311, 312)
+          if (mcc === 310 || mcc === 311 || mcc === 312) {
+            const usCarriers: { [key: string]: string } = {
+              '310-120': 'Sprint', '310-260': 'T-Mobile', '310-410': 'AT&T',
+              '311-480': 'Verizon', '310-004': 'Verizon', '311-490': 'T-Mobile',
+              '310-150': 'AT&T', '310-380': 'AT&T', '310-170': 'AT&T',
+              '310-030': 'AT&T', '310-070': 'AT&T', '310-560': 'AT&T',
+              '310-680': 'AT&T', '310-980': 'AT&T', '311-180': 'AT&T',
+              '312-530': 'Sprint', '310-830': 'T-Mobile', '310-580': 'T-Mobile'
+            }
+            return usCarriers[`${mcc}-${mnc}`] || `US Carrier (MNC ${mnc})`
+          }
+          return `MCC ${mcc}`
+        }
+
+        // Get radio type description
+        const getRadioType = (radio: string): string => {
+          const types: { [key: string]: string } = {
+            'LTE': '4G LTE', 'UMTS': '3G UMTS', 'GSM': '2G GSM',
+            'CDMA': 'CDMA', 'NR': '5G NR'
+          }
+          return types[radio] || radio || 'Unknown'
+        }
+
+        const towersWithDistance = cells.map((cell: any) => ({
+          cellId: cell.cellid,
+          lac: cell.lac,
+          mcc: cell.mcc,
+          mnc: cell.mnc,
+          radio: getRadioType(cell.radio),
+          carrier: getCarrierInfo(cell.mcc, cell.mnc),
+          lat: cell.lat,
+          lon: cell.lon,
+          range: cell.range, // in meters
+          distance: haversine(propLat, propLon, cell.lat, cell.lon)
+        })).sort((a: any, b: any) => a.distance - b.distance)
+
+        // Find closest tower
+        const closest = towersWithDistance[0]
+        const uniqueCarriers = [...new Set(towersWithDistance.map((t: any) => t.carrier))]
+
+        const summary = `${towersWithDistance.length} towers within 1mi | ` +
+          `Nearest: ${closest.distance.toFixed(2)}mi (${closest.carrier}, ${closest.radio}) | ` +
+          `Carriers: ${uniqueCarriers.slice(0, 3).join(', ')}`
+
+        return { summary, towers: towersWithDistance.slice(0, 5) }
+
+      } catch (error) {
+        console.error('OpenCelliD API error:', error)
+        return { summary: 'Unable to retrieve', towers: [] }
+      }
+    }
+
     // Search at 1 mile radius (will capture all 3 rings)
     const attomUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/snapshot?latitude=${latitude}&longitude=${longitude}&radius=1&pagesize=100&orderby=distance`
 
@@ -922,9 +1020,10 @@ app.post('/api/parcels/scip-search', async (c) => {
       phoneNumber: 'Not provided in source data',
       emailAddress: 'Not provided in source data',
 
-      // FEMA flood zone and wetlands will be populated separately
+      // Environmental & infrastructure data will be populated separately
       femaFloodZone: 'Pending lookup...',
-      wetlandsInfo: 'Pending lookup...'
+      wetlandsInfo: 'Pending lookup...',
+      nearbyTowers: { summary: 'Pending lookup...', towers: [] }
     })
 
     // Categorize properties by ring
@@ -961,8 +1060,8 @@ app.post('/api/parcels/scip-search', async (c) => {
       ...ring100.sort((a: any, b: any) => rankCandidate(b) - rankCandidate(a)).slice(0, 1)
     ].slice(0, 4) // Max 4 candidates
 
-    // Fetch FEMA flood zone and wetlands data for each top candidate
-    console.log(`Fetching environmental data for ${topCandidatesRaw.length} candidates...`)
+    // Fetch FEMA flood zone, wetlands, and cell tower data for each top candidate
+    console.log(`Fetching environmental & infrastructure data for ${topCandidatesRaw.length} candidates...`)
 
     const topCandidates = await Promise.all(
       topCandidatesRaw.map(async (candidate: any) => {
@@ -970,23 +1069,26 @@ app.post('/api/parcels/scip-search', async (c) => {
         const lon = candidate.coordinates?.longitude
 
         if (lat && lon) {
-          // Fetch FEMA and Wetlands data in parallel
-          const [floodZone, wetlands] = await Promise.all([
+          // Fetch FEMA, Wetlands, and Cell Tower data in parallel
+          const [floodZone, wetlands, towers] = await Promise.all([
             getFemaFloodZone(lat, lon),
-            getWetlandsInfo(lat, lon)
+            getWetlandsInfo(lat, lon),
+            getNearbyTowers(lat, lon)
           ])
 
           return {
             ...candidate,
             femaFloodZone: floodZone,
-            wetlandsInfo: wetlands
+            wetlandsInfo: wetlands,
+            nearbyTowers: towers
           }
         }
 
         return {
           ...candidate,
           femaFloodZone: 'Coordinates unavailable',
-          wetlandsInfo: 'Coordinates unavailable'
+          wetlandsInfo: 'Coordinates unavailable',
+          nearbyTowers: { summary: 'Coordinates unavailable', towers: [] }
         }
       })
     )

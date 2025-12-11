@@ -93,6 +93,13 @@ npx wrangler pages secret put ATTOM_API_KEY --project-name mapdog
 # Login: https://api.developer.attomdata.com/login
 ```
 
+### Set OpenCelliD API Key Secret (for Cell Tower Lookup)
+```bash
+npx wrangler pages secret put OPENCELLID_API_KEY --project-name mapdog
+# When prompted, paste your OpenCelliD API key
+# Get key at: https://opencellid.org (free account)
+```
+
 ### Create Cloudflare Pages Project
 ```bash
 npx wrangler pages project create mapdog \

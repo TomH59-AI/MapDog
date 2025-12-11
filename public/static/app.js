@@ -590,6 +590,21 @@ function renderScipCandidateCard(candidate, index) {
           <p class="text-gray-900 pl-2">${candidate.wetlandsInfo || 'Checking NWI...'}</p>
         </div>
 
+        <div class="grid grid-cols-1 gap-1 bg-purple-50 p-2 rounded">
+          <p><span class="font-semibold text-purple-700"><i class="fas fa-broadcast-tower mr-1"></i>Nearby Cell Towers:</span></p>
+          <p class="text-gray-900 pl-2 text-sm">${candidate.nearbyTowers?.summary || 'Checking OpenCelliD...'}</p>
+          ${candidate.nearbyTowers?.towers?.length > 0 ? `
+            <div class="mt-2 pl-2 text-xs space-y-1">
+              ${candidate.nearbyTowers.towers.slice(0, 3).map((t, i) => `
+                <div class="flex items-center gap-2 text-gray-600">
+                  <span class="inline-block w-4 h-4 bg-purple-200 rounded-full text-center text-purple-800 font-bold">${i + 1}</span>
+                  <span>${t.distance?.toFixed(2)}mi - ${t.carrier} (${t.radio})</span>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+
         <div class="grid grid-cols-1 gap-1">
           <p><span class="font-semibold text-gray-700">Phone Number:</span></p>
           <p class="text-gray-900 pl-2">${candidate.phoneNumber || 'Not provided in source data'}</p>
@@ -746,6 +761,13 @@ function exportScipCandidates() {
     exportText += `Coordinates:\nLatitude: ${c.coordinates?.latitude || 'N/A'}\nLongitude: ${c.coordinates?.longitude || 'N/A'}\n\n`
     exportText += `FEMA Flood Zone:\n${c.femaFloodZone || 'Not available'}\n\n`
     exportText += `Wetlands Status (USFWS NWI):\n${c.wetlandsInfo || 'Not available'}\n\n`
+    exportText += `Nearby Cell Towers (OpenCelliD):\n${c.nearbyTowers?.summary || 'Not available'}\n`
+    if (c.nearbyTowers?.towers?.length > 0) {
+      c.nearbyTowers.towers.slice(0, 5).forEach((t, i) => {
+        exportText += `  ${i + 1}. ${t.distance?.toFixed(2)}mi - ${t.carrier} (${t.radio}) - Cell ID: ${t.cellId}\n`
+      })
+    }
+    exportText += '\n'
     exportText += `Phone Number:\n${c.phoneNumber || 'Not provided in source data'}\n\n`
     exportText += `Email Address:\n${c.emailAddress || 'Not provided in source data'}\n\n`
     exportText += '\n'
