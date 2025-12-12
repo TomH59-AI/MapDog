@@ -15,24 +15,28 @@ document.addEventListener('DOMContentLoaded', () => {
 // Switch between search modes
 function switchMode(mode) {
   currentMode = mode
-  
+
   const countySection = document.getElementById('countyInput').parentElement.parentElement
   const coordinateSection = document.getElementById('coordinateSearchSection')
   const bulkSection = document.getElementById('bulkSearchSection')
+  const attomSection = document.getElementById('attomSearchSection')
   const countyBtn = document.getElementById('countyModeBtn')
   const coordinateBtn = document.getElementById('coordinateModeBtn')
   const bulkBtn = document.getElementById('bulkModeBtn')
-  
+  const attomBtn = document.getElementById('attomModeBtn')
+
   // Hide all sections
   countySection.classList.add('hidden')
   coordinateSection.classList.add('hidden')
   bulkSection.classList.add('hidden')
-  
+  attomSection.classList.add('hidden')
+
   // Reset button styles
   countyBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
   coordinateBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
   bulkBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
-  
+  attomBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
+
   // Show selected section and highlight button
   if (mode === 'county') {
     countySection.classList.remove('hidden')
@@ -43,8 +47,11 @@ function switchMode(mode) {
   } else if (mode === 'bulk') {
     bulkSection.classList.remove('hidden')
     bulkBtn.className = 'px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg transition-all'
+  } else if (mode === 'attom') {
+    attomSection.classList.remove('hidden')
+    attomBtn.className = 'px-4 py-2 bg-green-600 text-white font-semibold rounded-lg transition-all'
   }
-  
+
   // Clear results when switching
   document.getElementById('results').innerHTML = ''
 }
@@ -830,10 +837,10 @@ function showLoading(show, message = 'Fetching parcels...') {
 // Show error message
 function showError(message) {
   const resultsDiv = document.getElementById('results')
-  
+
   // Parse message for better display
   const lines = message.split('\n').filter(line => line.trim())
-  
+
   resultsDiv.innerHTML = `
     <div class="bg-red-100 border-2 border-red-400 rounded-lg p-6 text-center">
       <i class="fas fa-exclamation-triangle text-red-600 text-4xl mb-3"></i>
@@ -843,12 +850,366 @@ function showError(message) {
         }
         return `<p class="text-red-800 font-semibold ${i > 0 ? 'mt-2' : ''}">${line}</p>`
       }).join('')}
-      <button 
-        onclick="document.getElementById('results').innerHTML=''" 
+      <button
+        onclick="document.getElementById('results').innerHTML=''"
         class="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
       >
         Dismiss
       </button>
     </div>
   `
+}
+
+// ============================================
+// ATTOM DATA FUNCTIONS
+// ============================================
+
+// Switch between ATTOM search tabs
+function switchAttomTab(tab) {
+  const addressForm = document.getElementById('attomAddressForm')
+  const radiusForm = document.getElementById('attomRadiusForm')
+  const apnForm = document.getElementById('attomApnForm')
+  const addressTab = document.getElementById('attomAddressTab')
+  const radiusTab = document.getElementById('attomRadiusTab')
+  const apnTab = document.getElementById('attomApnTab')
+
+  // Hide all forms
+  addressForm.classList.add('hidden')
+  radiusForm.classList.add('hidden')
+  apnForm.classList.add('hidden')
+
+  // Reset tab styles
+  const inactiveStyle = 'px-3 py-1 bg-gray-300 text-gray-700 text-sm font-semibold rounded transition-all'
+  const activeStyle = 'px-3 py-1 bg-green-600 text-white text-sm font-semibold rounded transition-all'
+
+  addressTab.className = inactiveStyle
+  radiusTab.className = inactiveStyle
+  apnTab.className = inactiveStyle
+
+  // Show selected form and highlight tab
+  if (tab === 'address') {
+    addressForm.classList.remove('hidden')
+    addressTab.className = activeStyle
+  } else if (tab === 'radius') {
+    radiusForm.classList.remove('hidden')
+    radiusTab.className = activeStyle
+  } else if (tab === 'apn') {
+    apnForm.classList.remove('hidden')
+    apnTab.className = activeStyle
+  }
+}
+
+// ATTOM Address Search
+async function attomAddressSearch() {
+  const address1 = document.getElementById('attomAddress1').value.trim()
+  const address2 = document.getElementById('attomAddress2').value.trim()
+
+  if (!address1 || !address2) {
+    alert('Please enter both street address and city/state')
+    return
+  }
+
+  showLoading(true, 'Searching ATTOM by address...')
+
+  try {
+    const response = await fetch(
+      `/api/attom/property/address?address1=${encodeURIComponent(address1)}&address2=${encodeURIComponent(address2)}`
+    )
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error)
+    }
+
+    currentResults = data.data || []
+    displayAttomResults(data.data, 'address', { address1, address2 })
+    loadStats()
+
+  } catch (error) {
+    showError(error.message)
+  } finally {
+    showLoading(false)
+  }
+}
+
+// ATTOM Radius Search
+async function attomRadiusSearch() {
+  const lat = document.getElementById('attomLat').value.trim()
+  const lon = document.getElementById('attomLon').value.trim()
+  const radius = document.getElementById('attomRadius').value.trim() || '1'
+
+  if (!lat || !lon) {
+    alert('Please enter latitude and longitude')
+    return
+  }
+
+  showLoading(true, `Searching ATTOM within ${radius} mile radius...`)
+
+  try {
+    const response = await fetch(
+      `/api/attom/property/radius?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&radius=${encodeURIComponent(radius)}`
+    )
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error)
+    }
+
+    currentResults = data.data || []
+    displayAttomResults(data.data, 'radius', data.meta)
+    loadStats()
+
+  } catch (error) {
+    showError(error.message)
+  } finally {
+    showLoading(false)
+  }
+}
+
+// ATTOM APN Search
+async function attomApnSearch() {
+  const apn = document.getElementById('attomApn').value.trim()
+  const fips = document.getElementById('attomFips').value.trim()
+
+  if (!apn || !fips) {
+    alert('Please enter both APN and FIPS code')
+    return
+  }
+
+  showLoading(true, 'Searching ATTOM by APN...')
+
+  try {
+    const response = await fetch(
+      `/api/attom/property/apn?apn=${encodeURIComponent(apn)}&fips=${encodeURIComponent(fips)}`
+    )
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error)
+    }
+
+    currentResults = data.data || []
+    displayAttomResults(data.data, 'apn', { apn, fips })
+    loadStats()
+
+  } catch (error) {
+    showError(error.message)
+  } finally {
+    showLoading(false)
+  }
+}
+
+// Display ATTOM search results
+function displayAttomResults(properties, searchType, meta) {
+  const resultsDiv = document.getElementById('results')
+
+  if (!properties || properties.length === 0) {
+    resultsDiv.innerHTML = `
+      <div class="text-center py-8 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+        <i class="fas fa-database text-yellow-600 text-4xl mb-3"></i>
+        <p class="text-lg font-semibold text-gray-800">No properties found in ATTOM</p>
+        <p class="text-sm text-gray-600 mt-2">Try different search criteria</p>
+      </div>
+    `
+    return
+  }
+
+  let headerInfo = ''
+  if (searchType === 'address') {
+    headerInfo = `<span class="text-sm text-gray-600">${meta.address1}, ${meta.address2}</span>`
+  } else if (searchType === 'radius') {
+    headerInfo = `<span class="text-sm text-gray-600">Lat: ${meta.centerLat}, Lon: ${meta.centerLon}, Radius: ${meta.radiusMiles} mi</span>`
+  } else if (searchType === 'apn') {
+    headerInfo = `<span class="text-sm text-gray-600">APN: ${meta.apn}, FIPS: ${meta.fips}</span>`
+  }
+
+  resultsDiv.innerHTML = `
+    <div class="mb-4 p-4 bg-green-50 border-2 border-green-300 rounded-lg">
+      <div class="flex justify-between items-start">
+        <div>
+          <h3 class="text-xl font-bold text-gray-800">
+            <i class="fas fa-database text-green-600 mr-2"></i>
+            ATTOM Results (${properties.length})
+          </h3>
+          ${headerInfo}
+        </div>
+        <button
+          onclick="exportAttomResults()"
+          class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-all"
+          title="Export to CSV"
+        >
+          <i class="fas fa-download mr-2"></i>Export
+        </button>
+      </div>
+    </div>
+    <div class="space-y-3 max-h-96 overflow-y-auto">
+      ${properties.map((prop, index) => renderAttomPropertyCard(prop, index)).join('')}
+    </div>
+  `
+}
+
+// Render ATTOM property card
+function renderAttomPropertyCard(property, index) {
+  const address = property.address || {}
+  const lot = property.lot || {}
+  const building = property.building || {}
+  const assessment = property.assessment || {}
+  const sale = property.sale || {}
+  const summary = property.summary || {}
+
+  const fullAddress = [
+    address.line1,
+    address.line2
+  ].filter(Boolean).join(', ') || 'No address'
+
+  const owner = property.assessment?.owner?.owner1?.fullName || summary.legal1 || 'N/A'
+  const acres = lot.lotSize1 ? (lot.lotSize1 / 43560).toFixed(2) : (lot.lotSize2 || 'N/A')
+  const marketValue = assessment.market?.mktTtlValue || assessment.assessed?.assdTtlValue || 0
+  const yearBuilt = building.yearBuilt || summary.yearBuilt || 'N/A'
+  const sqft = building.size?.bldgSize || building.size?.livingSize || 'N/A'
+  const propType = summary.propType || summary.propSubType || 'N/A'
+  const zoning = lot.zoning || 'N/A'
+  const lastSaleDate = sale.salesSearchDate || 'N/A'
+  const lastSalePrice = sale.amount?.saleAmt || 'N/A'
+
+  return `
+    <div class="bg-green-50 border-2 border-green-200 rounded-lg p-4 hover:border-green-400 transition-all">
+      <div class="flex justify-between items-start">
+        <div class="flex-1">
+          <h4 class="font-bold text-lg text-gray-800 mb-2">
+            <i class="fas fa-home text-green-600 mr-2"></i>
+            ${fullAddress}
+          </h4>
+          <div class="grid grid-cols-2 gap-2 text-sm mb-2">
+            <div class="text-gray-600">
+              <span class="font-semibold">Owner:</span> ${owner}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Property Type:</span> ${propType}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Lot Size:</span> ${acres} acres
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Building Sq Ft:</span> ${typeof sqft === 'number' ? sqft.toLocaleString() : sqft}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Year Built:</span> ${yearBuilt}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Zoning:</span> ${zoning}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Market Value:</span> $${typeof marketValue === 'number' ? marketValue.toLocaleString() : marketValue}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Last Sale:</span> ${lastSaleDate !== 'N/A' ? `$${typeof lastSalePrice === 'number' ? lastSalePrice.toLocaleString() : lastSalePrice} (${lastSaleDate})` : 'N/A'}
+            </div>
+          </div>
+          <p class="text-xs text-green-600 mt-1">
+            <i class="fas fa-database mr-1"></i>Source: ATTOM Data
+          </p>
+        </div>
+        <button
+          onclick="saveAttomProperty(${index})"
+          class="ml-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all transform hover:scale-105"
+          title="Save to favorites"
+        >
+          <i class="fas fa-star"></i>
+        </button>
+      </div>
+    </div>
+  `
+}
+
+// Save ATTOM property to favorites
+async function saveAttomProperty(index) {
+  const property = currentResults[index]
+  if (!property) {
+    alert('Property not found')
+    return
+  }
+
+  const address = property.address || {}
+  const parcelId = property.identifier?.attomId || property.identifier?.apn ||
+    `ATTOM-${address.line1 || 'unknown'}`.replace(/\s+/g, '-')
+
+  const notes = prompt('Add notes for this property (optional):')
+
+  try {
+    const response = await fetch('/api/parcels/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        parcelId,
+        county: 'ATTOM',
+        parcelData: property,
+        notes
+      })
+    })
+
+    const data = await response.json()
+
+    if (data.success) {
+      alert('Property saved to favorites!')
+      loadStats()
+    } else {
+      throw new Error('Failed to save')
+    }
+  } catch (error) {
+    alert(`Failed to save property: ${error.message}`)
+  }
+}
+
+// Export ATTOM results to CSV
+function exportAttomResults() {
+  if (!currentResults || currentResults.length === 0) {
+    alert('No results to export')
+    return
+  }
+
+  const headers = [
+    'Address', 'City', 'State', 'Zip', 'Owner', 'Property Type',
+    'Lot Size (sqft)', 'Building Sqft', 'Year Built', 'Zoning',
+    'Market Value', 'Last Sale Price', 'Last Sale Date', 'APN', 'ATTOM ID'
+  ]
+
+  const rows = currentResults.map(prop => {
+    const address = prop.address || {}
+    const lot = prop.lot || {}
+    const building = prop.building || {}
+    const assessment = prop.assessment || {}
+    const sale = prop.sale || {}
+    const summary = prop.summary || {}
+    const identifier = prop.identifier || {}
+
+    return [
+      address.line1 || '',
+      address.locality || '',
+      address.countrySubd || '',
+      address.postal1 || '',
+      assessment?.owner?.owner1?.fullName || summary.legal1 || '',
+      summary.propType || '',
+      lot.lotSize1 || '',
+      building.size?.bldgSize || '',
+      building.yearBuilt || summary.yearBuilt || '',
+      lot.zoning || '',
+      assessment.market?.mktTtlValue || '',
+      sale.amount?.saleAmt || '',
+      sale.salesSearchDate || '',
+      identifier.apn || '',
+      identifier.attomId || ''
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+  })
+
+  const csv = [headers.join(','), ...rows].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `attom-properties-${Date.now()}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+
+  alert(`Exported ${currentResults.length} ATTOM properties to CSV`)
 }

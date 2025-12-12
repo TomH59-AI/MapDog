@@ -5,6 +5,7 @@ import { renderer } from './renderer'
 type Bindings = {
   DB: D1Database
   MAPWISE_API_KEY: string
+  ATTOM_API_KEY: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -66,27 +67,34 @@ app.get('/', (c) => {
           </div>
 
           {/* Mode Toggle */}
-          <div class="flex gap-2 mb-6 border-b-2 border-gray-200 pb-2">
-            <button 
+          <div class="flex flex-wrap gap-2 mb-6 border-b-2 border-gray-200 pb-2">
+            <button
               id="countyModeBtn"
               onclick="switchMode('county')"
               class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg transition-all"
             >
               <i class="fas fa-map-marker-alt mr-2"></i>County Search
             </button>
-            <button 
+            <button
               id="coordinateModeBtn"
               onclick="switchMode('coordinate')"
               class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
             >
               <i class="fas fa-crosshairs mr-2"></i>RF Coordinates
             </button>
-            <button 
+            <button
               id="bulkModeBtn"
               onclick="switchMode('bulk')"
               class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
             >
               <i class="fas fa-layer-group mr-2"></i>Bulk PINs
+            </button>
+            <button
+              id="attomModeBtn"
+              onclick="switchMode('attom')"
+              class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
+            >
+              <i class="fas fa-database mr-2"></i>ATTOM Data
             </button>
           </div>
 
@@ -170,35 +178,35 @@ app.get('/', (c) => {
               Search Ring - Bulk PIN Lookup
             </label>
             <div class="mb-3">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 id="searchRingName"
                 placeholder="Search Ring Name (e.g., Orlando Tower Site 1)"
                 class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
               />
             </div>
             <div class="mb-3">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 id="bulkCounty"
                 placeholder="County (e.g., ORANGE)"
                 class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
               />
             </div>
-            <textarea 
+            <textarea
               id="pinListInput"
               placeholder="Paste PIN list (one per line):&#10;03869-010-000&#10;03869-020-000&#10;03869-030-000"
               rows="6"
               class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none text-sm font-mono"
             ></textarea>
             <div class="flex gap-3 mt-3">
-              <button 
+              <button
                 onclick="bulkSearchParcels()"
                 class="flex-1 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-all transform hover:scale-105 shadow-lg"
               >
                 <i class="fas fa-search-plus mr-2"></i>Fetch All Parcels
               </button>
-              <button 
+              <button
                 onclick="clearBulkSearch()"
                 class="px-6 py-3 bg-gray-400 hover:bg-gray-500 text-white font-semibold rounded-lg transition-all"
               >
@@ -208,6 +216,126 @@ app.get('/', (c) => {
             <p class="text-xs text-gray-500 mt-2">
               <i class="fas fa-info-circle mr-1"></i>
               Paste PINs from your search ring tool • Max 50 PINs per search
+            </p>
+          </div>
+
+          {/* ATTOM Data Search (Hidden by default) */}
+          <div id="attomSearchSection" class="hidden mb-6">
+            <label class="block text-gray-700 text-lg font-semibold mb-3">
+              <i class="fas fa-database text-green-600 mr-2"></i>
+              ATTOM Property Data
+            </label>
+
+            {/* ATTOM Search Type Tabs */}
+            <div class="flex gap-2 mb-4">
+              <button
+                id="attomAddressTab"
+                onclick="switchAttomTab('address')"
+                class="px-3 py-1 bg-green-600 text-white text-sm font-semibold rounded transition-all"
+              >
+                Address
+              </button>
+              <button
+                id="attomRadiusTab"
+                onclick="switchAttomTab('radius')"
+                class="px-3 py-1 bg-gray-300 text-gray-700 text-sm font-semibold rounded transition-all"
+              >
+                Radius
+              </button>
+              <button
+                id="attomApnTab"
+                onclick="switchAttomTab('apn')"
+                class="px-3 py-1 bg-gray-300 text-gray-700 text-sm font-semibold rounded transition-all"
+              >
+                APN/Parcel
+              </button>
+            </div>
+
+            {/* ATTOM Address Search */}
+            <div id="attomAddressForm">
+              <div class="grid grid-cols-1 gap-3 mb-3">
+                <input
+                  type="text"
+                  id="attomAddress1"
+                  placeholder="Street Address (e.g., 4529 Winona Court)"
+                  class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  id="attomAddress2"
+                  placeholder="City, State (e.g., Denver, CO)"
+                  class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                />
+              </div>
+              <button
+                onclick="attomAddressSearch()"
+                class="w-full px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                <i class="fas fa-search mr-2"></i>Search ATTOM by Address
+              </button>
+            </div>
+
+            {/* ATTOM Radius Search */}
+            <div id="attomRadiusForm" class="hidden">
+              <div class="grid grid-cols-3 gap-3 mb-3">
+                <input
+                  type="text"
+                  id="attomLat"
+                  placeholder="Latitude"
+                  class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  id="attomLon"
+                  placeholder="Longitude"
+                  class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                />
+                <input
+                  type="number"
+                  id="attomRadius"
+                  placeholder="Radius (miles)"
+                  value="1"
+                  min="0.1"
+                  max="5"
+                  step="0.1"
+                  class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                />
+              </div>
+              <button
+                onclick="attomRadiusSearch()"
+                class="w-full px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                <i class="fas fa-bullseye mr-2"></i>Search ATTOM by Radius
+              </button>
+            </div>
+
+            {/* ATTOM APN Search */}
+            <div id="attomApnForm" class="hidden">
+              <div class="grid grid-cols-2 gap-3 mb-3">
+                <input
+                  type="text"
+                  id="attomApn"
+                  placeholder="APN (e.g., 02192-04-018-000)"
+                  class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  id="attomFips"
+                  placeholder="FIPS Code (e.g., 08031)"
+                  class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                />
+              </div>
+              <button
+                onclick="attomApnSearch()"
+                class="w-full px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                <i class="fas fa-fingerprint mr-2"></i>Search ATTOM by APN
+              </button>
+            </div>
+
+            <p class="text-xs text-gray-500 mt-3">
+              <i class="fas fa-info-circle mr-1"></i>
+              ATTOM provides comprehensive property data including ownership, valuations, and sales history
             </p>
           </div>
 
@@ -697,6 +825,312 @@ app.get('/api/stats', async (c) => {
       savedParcels: 0,
       lastCounty: 'N/A'
     })
+  }
+})
+
+// ============================================
+// ATTOM API INTEGRATION
+// ============================================
+
+const ATTOM_BASE_URL = 'https://api.gateway.attomdata.com'
+
+// Helper function for ATTOM API requests
+async function attomFetch(endpoint: string, apiKey: string) {
+  const response = await fetch(`${ATTOM_BASE_URL}${endpoint}`, {
+    headers: {
+      'accept': 'application/json',
+      'apikey': apiKey
+    }
+  })
+  return response
+}
+
+// API: ATTOM Property Search by Address
+app.get('/api/attom/property/address', async (c) => {
+  const address1 = c.req.query('address1')
+  const address2 = c.req.query('address2')
+
+  // Validate input
+  if (!address1 || !address2) {
+    return c.json({
+      error: 'Both address1 and address2 are required',
+      hint: 'address1 = street address, address2 = city, state (e.g., Denver, CO)'
+    }, 400)
+  }
+
+  const apiKey = c.env.ATTOM_API_KEY
+  if (!apiKey) {
+    return c.json({
+      error: 'ATTOM API key not configured',
+      hint: 'Set ATTOM_API_KEY secret in Cloudflare'
+    }, 500)
+  }
+
+  try {
+    const endpoint = `/propertyapi/v1.0.0/property/basicprofile?address1=${encodeURIComponent(address1)}&address2=${encodeURIComponent(address2)}`
+    const response = await attomFetch(endpoint, apiKey)
+
+    if (!response.ok) {
+      const statusCode = response.status
+      let errorMessage = 'ATTOM API error'
+
+      switch (statusCode) {
+        case 400:
+          errorMessage = 'Invalid address format'
+          break
+        case 401:
+          errorMessage = 'Invalid ATTOM API key'
+          break
+        case 403:
+          errorMessage = 'ATTOM API access denied'
+          break
+        case 404:
+          errorMessage = 'Property not found at this address'
+          break
+        case 429:
+          errorMessage = 'ATTOM rate limit exceeded'
+          break
+        default:
+          errorMessage = `ATTOM API error (${statusCode})`
+      }
+
+      return c.json({ error: errorMessage, statusCode }, statusCode >= 500 ? 503 : statusCode)
+    }
+
+    const data = await response.json()
+
+    // Log search to database
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
+      ).bind(
+        'ATTOM',
+        JSON.stringify({ type: 'attom_address', address1, address2 }),
+        data.property?.length || 1
+      ).run()
+    } catch (dbError) {
+      console.error('Database save error:', dbError)
+    }
+
+    return c.json({
+      success: true,
+      source: 'ATTOM',
+      data: data.property || [],
+      status: data.status
+    })
+
+  } catch (error) {
+    console.error('ATTOM API Error:', error)
+    return c.json({
+      error: 'Failed to connect to ATTOM API',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
+// API: ATTOM Property Search by Radius (Coordinates)
+app.get('/api/attom/property/radius', async (c) => {
+  const lat = c.req.query('latitude')
+  const lon = c.req.query('longitude')
+  const radius = c.req.query('radius') || '1'
+
+  // Validate input
+  if (!lat || !lon) {
+    return c.json({
+      error: 'latitude and longitude are required',
+      hint: 'Provide decimal coordinates (e.g., latitude=28.5383&longitude=-81.3792)'
+    }, 400)
+  }
+
+  const latitude = parseFloat(lat)
+  const longitude = parseFloat(lon)
+  const radiusMiles = parseFloat(radius)
+
+  if (isNaN(latitude) || isNaN(longitude) || isNaN(radiusMiles)) {
+    return c.json({ error: 'Invalid coordinates or radius' }, 400)
+  }
+
+  if (latitude < -90 || latitude > 90) {
+    return c.json({ error: 'Latitude must be between -90 and 90' }, 400)
+  }
+  if (longitude < -180 || longitude > 180) {
+    return c.json({ error: 'Longitude must be between -180 and 180' }, 400)
+  }
+
+  const apiKey = c.env.ATTOM_API_KEY
+  if (!apiKey) {
+    return c.json({ error: 'ATTOM API key not configured' }, 500)
+  }
+
+  try {
+    const endpoint = `/propertyapi/v1.0.0/property/snapshot?latitude=${latitude}&longitude=${longitude}&radius=${radiusMiles}`
+    const response = await attomFetch(endpoint, apiKey)
+
+    if (!response.ok) {
+      const statusCode = response.status
+      let errorMessage = statusCode === 404
+        ? 'No properties found in this radius'
+        : `ATTOM API error (${statusCode})`
+
+      return c.json({ error: errorMessage, statusCode }, statusCode >= 500 ? 503 : statusCode)
+    }
+
+    const data = await response.json()
+
+    // Log search to database
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
+      ).bind(
+        'ATTOM',
+        JSON.stringify({ type: 'attom_radius', latitude, longitude, radius: radiusMiles }),
+        data.property?.length || 0
+      ).run()
+    } catch (dbError) {
+      console.error('Database save error:', dbError)
+    }
+
+    return c.json({
+      success: true,
+      source: 'ATTOM',
+      data: data.property || [],
+      meta: {
+        centerLat: latitude,
+        centerLon: longitude,
+        radiusMiles: radiusMiles,
+        total: data.property?.length || 0
+      },
+      status: data.status
+    })
+
+  } catch (error) {
+    console.error('ATTOM Radius Search Error:', error)
+    return c.json({
+      error: 'Failed to perform radius search',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
+// API: ATTOM Property Search by APN (Assessor's Parcel Number)
+app.get('/api/attom/property/apn', async (c) => {
+  const apn = c.req.query('apn')
+  const fips = c.req.query('fips')
+
+  // Validate input
+  if (!apn) {
+    return c.json({
+      error: 'APN (Assessor\'s Parcel Number) is required',
+      hint: 'Format varies by county (e.g., 02192-04-018-000)'
+    }, 400)
+  }
+
+  if (!fips) {
+    return c.json({
+      error: 'FIPS code is required',
+      hint: 'FIPS is the 5-digit county code (e.g., 08031 for Denver County, CO)'
+    }, 400)
+  }
+
+  const apiKey = c.env.ATTOM_API_KEY
+  if (!apiKey) {
+    return c.json({ error: 'ATTOM API key not configured' }, 500)
+  }
+
+  try {
+    const endpoint = `/propertyapi/v1.0.0/property/basicprofile?apn=${encodeURIComponent(apn)}&fips=${encodeURIComponent(fips)}`
+    const response = await attomFetch(endpoint, apiKey)
+
+    if (!response.ok) {
+      const statusCode = response.status
+      let errorMessage = statusCode === 404
+        ? 'Property not found with this APN/FIPS combination'
+        : `ATTOM API error (${statusCode})`
+
+      return c.json({ error: errorMessage, statusCode }, statusCode >= 500 ? 503 : statusCode)
+    }
+
+    const data = await response.json()
+
+    // Log search to database
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
+      ).bind(
+        'ATTOM',
+        JSON.stringify({ type: 'attom_apn', apn, fips }),
+        data.property?.length || 1
+      ).run()
+    } catch (dbError) {
+      console.error('Database save error:', dbError)
+    }
+
+    return c.json({
+      success: true,
+      source: 'ATTOM',
+      data: data.property || [],
+      status: data.status
+    })
+
+  } catch (error) {
+    console.error('ATTOM APN Search Error:', error)
+    return c.json({
+      error: 'Failed to search by APN',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
+// API: ATTOM Property Detail (full property information)
+app.get('/api/attom/property/detail', async (c) => {
+  const address1 = c.req.query('address1')
+  const address2 = c.req.query('address2')
+  const attomId = c.req.query('attomId')
+
+  const apiKey = c.env.ATTOM_API_KEY
+  if (!apiKey) {
+    return c.json({ error: 'ATTOM API key not configured' }, 500)
+  }
+
+  let endpoint: string
+
+  if (attomId) {
+    endpoint = `/propertyapi/v1.0.0/property/detail?attomId=${encodeURIComponent(attomId)}`
+  } else if (address1 && address2) {
+    endpoint = `/propertyapi/v1.0.0/property/detail?address1=${encodeURIComponent(address1)}&address2=${encodeURIComponent(address2)}`
+  } else {
+    return c.json({
+      error: 'Either attomId or address1+address2 required',
+      hint: 'Provide attomId from a previous search, or full address'
+    }, 400)
+  }
+
+  try {
+    const response = await attomFetch(endpoint, apiKey)
+
+    if (!response.ok) {
+      const statusCode = response.status
+      return c.json({
+        error: statusCode === 404 ? 'Property not found' : `ATTOM API error (${statusCode})`,
+        statusCode
+      }, statusCode >= 500 ? 503 : statusCode)
+    }
+
+    const data = await response.json()
+
+    return c.json({
+      success: true,
+      source: 'ATTOM',
+      data: data.property || [],
+      status: data.status
+    })
+
+  } catch (error) {
+    console.error('ATTOM Detail Error:', error)
+    return c.json({
+      error: 'Failed to fetch property details',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
   }
 })
 
