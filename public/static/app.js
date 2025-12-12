@@ -280,8 +280,9 @@ function displayBulkResults(data, county, searchRingName) {
   const resultsDiv = document.getElementById('results')
   const requested = data.meta?.requested || 0
   const found = data.meta?.found || 0
-  const errors = data.meta?.errors || 0
-  
+  const notFoundCount = data.meta?.notFound || 0
+  const notFoundPins = data.notFound || []
+
   if (found === 0) {
     resultsDiv.innerHTML = `
       <div class="text-center py-8 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
@@ -289,30 +290,44 @@ function displayBulkResults(data, county, searchRingName) {
         <p class="text-lg font-semibold text-gray-800">No parcels found</p>
         <p class="text-sm text-gray-600 mt-2">Requested: ${requested} PINs • Found: 0</p>
         <p class="text-xs text-gray-500 mt-2">Check that PINs are correct for ${county} county</p>
+        ${notFoundPins.length > 0 ? `
+          <details class="mt-3 text-left max-w-md mx-auto">
+            <summary class="cursor-pointer text-sm text-gray-600">Show unmatched PINs</summary>
+            <pre class="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-32">${notFoundPins.join('\n')}</pre>
+          </details>
+        ` : ''}
       </div>
     `
     return
   }
-  
+
   resultsDiv.innerHTML = `
     <div class="mb-4 p-4 bg-purple-50 border-2 border-purple-300 rounded-lg">
       <div class="flex justify-between items-start">
-        <div>
+        <div class="flex-1">
           <h3 class="text-xl font-bold text-gray-800">
             <i class="fas fa-layer-group text-purple-600 mr-2"></i>
             Search Ring Results
           </h3>
           ${searchRingName ? `<p class="text-sm font-semibold text-purple-700 mt-1">${searchRingName}</p>` : ''}
           <p class="text-sm text-gray-600 mt-2">
-            <span class="font-semibold">County:</span> ${county} • 
-            <span class="font-semibold">Requested:</span> ${requested} PINs • 
+            <span class="font-semibold">County:</span> ${county} •
+            <span class="font-semibold">Requested:</span> ${requested} PINs •
             <span class="font-semibold text-green-600">Found:</span> ${found} parcels
-            ${errors > 0 ? ` • <span class="font-semibold text-red-600">Errors:</span> ${errors}` : ''}
+            ${notFoundCount > 0 ? ` • <span class="font-semibold text-orange-600">Not Found:</span> ${notFoundCount}` : ''}
           </p>
+          ${notFoundPins.length > 0 ? `
+            <details class="mt-2">
+              <summary class="cursor-pointer text-xs text-orange-600 hover:text-orange-800">
+                <i class="fas fa-exclamation-circle mr-1"></i>${notFoundCount} PINs not found in MapWise
+              </summary>
+              <pre class="mt-1 p-2 bg-orange-50 border border-orange-200 rounded text-xs overflow-auto max-h-24">${notFoundPins.join('\n')}</pre>
+            </details>
+          ` : ''}
         </div>
-        <button 
+        <button
           onclick="saveAllBulkParcels('${county}', '${searchRingName}')"
-          class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all"
+          class="ml-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all"
           title="Save all to favorites"
         >
           <i class="fas fa-save mr-2"></i>Save All

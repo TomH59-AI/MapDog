@@ -531,94 +531,128 @@ app.post('/api/parcels/coordinate-search', async (c) => {
 app.post('/api/parcels/bulk-search', async (c) => {
   try {
     const { pins, county, searchRingName } = await c.req.json()
-    
+
     // Validate input
     if (!pins || !Array.isArray(pins) || pins.length === 0) {
-      return c.json({ 
+      return c.json({
         error: 'PIN list is required',
         hint: 'Provide an array of parcel PINs'
       }, 400)
     }
-    
+
     if (!county) {
-      return c.json({ 
+      return c.json({
         error: 'County parameter is required',
         hint: 'Specify which county to search in'
       }, 400)
     }
-    
+
     // Validate county format
     const countyClean = county.trim().toUpperCase()
     if (!/^[A-Z\s\-]+$/.test(countyClean)) {
-      return c.json({ 
+      return c.json({
         error: 'Invalid county name format',
         hint: 'County name should contain only letters, spaces, and hyphens'
       }, 400)
     }
-    
+
     const apiKey = c.env.MAPWISE_API_KEY || 'DEMO_KEY'
-    const results = []
-    const errors = []
-    
-    // Search for each PIN (MapWise doesn't support bulk, so we batch)
-    for (const pin of pins.slice(0, 50)) { // Limit to 50 PINs per request
-      try {
-        const response = await fetch(
-          `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=100`,
-          {
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        )
-        
-        if (response.ok) {
-          const data = await response.json()
-          // Find matching PIN in results
-          const match = data.data?.find((p: any) => 
-            p.identifiers?.pin === pin || 
-            p.identifiers?.pin_clean === pin.replace(/[^0-9]/g, '')
-          )
-          if (match) {
-            results.push(match)
+    const results: any[] = []
+    const notFound: string[] = []
+
+    // Limit to 50 PINs per request
+    const searchPins = pins.slice(0, 50)
+
+    // Normalize PIN list for comparison (remove dashes, spaces)
+    const normalizedPins = new Set(
+      searchPins.map((pin: string) => pin.replace(/[^0-9a-zA-Z]/g, '').toUpperCase())
+    )
+    const originalPinMap = new Map(
+      searchPins.map((pin: string) => [pin.replace(/[^0-9a-zA-Z]/g, '').toUpperCase(), pin])
+    )
+
+    // Make ONE API call to fetch parcels from the county
+    try {
+      const response = await fetch(
+        `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=500`,
+        {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
           }
         }
-      } catch (error) {
-        errors.push({ pin, error: 'Failed to fetch' })
+      )
+
+      if (!response.ok) {
+        return c.json({
+          error: 'Failed to fetch parcels from MapWise',
+          statusCode: response.status
+        }, response.status)
       }
-    }
-    
-    // Save search ring to database if name provided
-    if (searchRingName) {
-      try {
-        await c.env.DB.prepare(
-          'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
-        ).bind(
-          countyClean, 
-          JSON.stringify({ type: 'bulk', pins, searchRingName }), 
-          results.length
-        ).run()
-      } catch (dbError) {
-        console.error('Database save error:', dbError)
+
+      const data = await response.json()
+      const allParcels = data.data || []
+
+      // Find all matching PINs in the result set
+      const foundPins = new Set<string>()
+
+      for (const parcel of allParcels) {
+        const parcelPin = parcel.identifiers?.pin || ''
+        const parcelPinClean = parcel.identifiers?.pin_clean || parcelPin.replace(/[^0-9a-zA-Z]/g, '')
+        const normalizedParcelPin = parcelPinClean.toUpperCase()
+
+        if (normalizedPins.has(normalizedParcelPin)) {
+          results.push({
+            ...parcel,
+            _matchedPin: originalPinMap.get(normalizedParcelPin)
+          })
+          foundPins.add(normalizedParcelPin)
+        }
       }
+
+      // Track which PINs were not found
+      for (const [normalized, original] of originalPinMap) {
+        if (!foundPins.has(normalized)) {
+          notFound.push(original)
+        }
+      }
+
+    } catch (fetchError) {
+      console.error('MapWise fetch error:', fetchError)
+      return c.json({
+        error: 'Failed to connect to MapWise API',
+        details: fetchError instanceof Error ? fetchError.message : 'Unknown error'
+      }, 500)
     }
-    
+
+    // Save search to database (always save, not just when name provided)
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
+      ).bind(
+        countyClean,
+        JSON.stringify({ type: 'bulk', pins: searchPins, searchRingName: searchRingName || null }),
+        results.length
+      ).run()
+    } catch (dbError) {
+      console.error('Database save error:', dbError)
+    }
+
     return c.json({
       success: true,
       results,
       meta: {
-        requested: pins.length,
+        requested: searchPins.length,
         found: results.length,
-        errors: errors.length,
+        notFound: notFound.length,
         searchRingName: searchRingName || null
       },
-      errors: errors.length > 0 ? errors : undefined
+      notFound: notFound.length > 0 ? notFound : undefined
     })
-    
+
   } catch (error) {
     console.error('Bulk search error:', error)
-    return c.json({ 
+    return c.json({
       error: 'Failed to perform bulk search',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, 500)
