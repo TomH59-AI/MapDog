@@ -1,11 +1,12 @@
 // MapDog - Site Acquisition Parcel Search Frontend
 let currentResults = []
-let currentMode = 'county' // 'county' or 'bulk'
+let currentMode = 'county' // 'county', 'coordinate', 'bulk', or 'scip'
+let currentSCIP = null
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
   loadStats()
-  
+
   // Allow Enter key to trigger search
   document.getElementById('countyInput').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') searchParcels()
@@ -15,24 +16,29 @@ document.addEventListener('DOMContentLoaded', () => {
 // Switch between search modes
 function switchMode(mode) {
   currentMode = mode
-  
+
   const countySection = document.getElementById('countyInput').parentElement.parentElement
   const coordinateSection = document.getElementById('coordinateSearchSection')
   const bulkSection = document.getElementById('bulkSearchSection')
+  const scipSection = document.getElementById('scipSection')
   const countyBtn = document.getElementById('countyModeBtn')
   const coordinateBtn = document.getElementById('coordinateModeBtn')
   const bulkBtn = document.getElementById('bulkModeBtn')
-  
+  const scipBtn = document.getElementById('scipModeBtn')
+
   // Hide all sections
   countySection.classList.add('hidden')
   coordinateSection.classList.add('hidden')
   bulkSection.classList.add('hidden')
-  
+  scipSection.classList.add('hidden')
+
   // Reset button styles
-  countyBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
-  coordinateBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
-  bulkBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
-  
+  const btnBase = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
+  countyBtn.className = btnBase
+  coordinateBtn.className = btnBase
+  bulkBtn.className = btnBase
+  scipBtn.className = btnBase
+
   // Show selected section and highlight button
   if (mode === 'county') {
     countySection.classList.remove('hidden')
@@ -43,8 +49,11 @@ function switchMode(mode) {
   } else if (mode === 'bulk') {
     bulkSection.classList.remove('hidden')
     bulkBtn.className = 'px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg transition-all'
+  } else if (mode === 'scip') {
+    scipSection.classList.remove('hidden')
+    scipBtn.className = 'px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg transition-all'
   }
-  
+
   // Clear results when switching
   document.getElementById('results').innerHTML = ''
 }
@@ -845,10 +854,10 @@ function showLoading(show, message = 'Fetching parcels...') {
 // Show error message
 function showError(message) {
   const resultsDiv = document.getElementById('results')
-  
+
   // Parse message for better display
   const lines = message.split('\n').filter(line => line.trim())
-  
+
   resultsDiv.innerHTML = `
     <div class="bg-red-100 border-2 border-red-400 rounded-lg p-6 text-center">
       <i class="fas fa-exclamation-triangle text-red-600 text-4xl mb-3"></i>
@@ -858,12 +867,370 @@ function showError(message) {
         }
         return `<p class="text-red-800 font-semibold ${i > 0 ? 'mt-2' : ''}">${line}</p>`
       }).join('')}
-      <button 
-        onclick="document.getElementById('results').innerHTML=''" 
+      <button
+        onclick="document.getElementById('results').innerHTML=''"
         class="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
       >
         Dismiss
       </button>
     </div>
   `
+}
+
+// ========================================
+// SCIP Generator Functions
+// ========================================
+
+// Generate SCIP Report
+async function generateSCIP() {
+  // Gather form data
+  const siteName = document.getElementById('scipSiteName').value.trim()
+  const siteId = document.getElementById('scipSiteId').value.trim()
+  const address = document.getElementById('scipAddress').value.trim()
+  const city = document.getElementById('scipCity').value.trim()
+  const county = document.getElementById('scipCounty').value.trim().toUpperCase()
+  const state = document.getElementById('scipState').value.trim()
+  const zip = document.getElementById('scipZip').value.trim()
+  const lat = document.getElementById('scipLat').value.trim()
+  const lon = document.getElementById('scipLon').value.trim()
+  const jurisdiction = document.getElementById('scipJurisdiction').value.trim()
+
+  const ownerName = document.getElementById('scipOwnerName').value.trim()
+  const ownerAddress = document.getElementById('scipOwnerAddress').value.trim()
+  const ownerCity = document.getElementById('scipOwnerCity').value.trim()
+  const ownerState = document.getElementById('scipOwnerState').value.trim()
+  const ownerZip = document.getElementById('scipOwnerZip').value.trim()
+  const ownerPhone = document.getElementById('scipOwnerPhone').value.trim()
+  const ownerEmail = document.getElementById('scipOwnerEmail').value.trim()
+
+  const parcelPin = document.getElementById('scipParcelPin').value.trim()
+
+  // Validate required fields
+  if (!lat || !lon) {
+    alert('⚠️ Latitude and Longitude are required\n\nGet coordinates from RF Engineer or Google Maps')
+    return
+  }
+
+  if (!siteName) {
+    alert('⚠️ Site Name is required')
+    return
+  }
+
+  showLoading(true, 'Generating SCIP Report... Querying multiple data sources...')
+
+  try {
+    const response = await fetch('/api/scip/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        siteName, siteId, address, city, county, state, zip, lat, lon, jurisdiction,
+        ownerName, ownerAddress, ownerCity, ownerState, ownerZip, ownerPhone, ownerEmail,
+        parcelPin
+      })
+    })
+
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error + (data.details ? '\n\n' + data.details : ''))
+    }
+
+    currentSCIP = data.scip
+    displaySCIPResults(data.scip)
+    loadStats()
+
+  } catch (error) {
+    showError(error.message)
+  } finally {
+    showLoading(false)
+  }
+}
+
+// Display SCIP Results
+function displaySCIPResults(scip) {
+  const resultsDiv = document.getElementById('results')
+
+  resultsDiv.innerHTML = `
+    <div class="bg-gradient-to-r from-teal-50 to-cyan-50 border-2 border-teal-400 rounded-lg p-4">
+      <div class="flex justify-between items-start mb-4">
+        <h3 class="text-2xl font-bold text-gray-800">
+          <i class="fas fa-file-alt text-teal-600 mr-2"></i>
+          SCIP Report: ${scip.siteInfo.siteName || 'Unnamed Site'}
+        </h3>
+        <div class="flex gap-2">
+          <button onclick="exportSCIPToCSV()" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg">
+            <i class="fas fa-download mr-2"></i>Export CSV
+          </button>
+          <button onclick="printSCIP()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+            <i class="fas fa-print mr-2"></i>Print
+          </button>
+        </div>
+      </div>
+
+      <p class="text-xs text-gray-500 mb-4">
+        <i class="fas fa-clock mr-1"></i>Generated: ${new Date(scip.generatedAt).toLocaleString()}
+      </p>
+
+      <!-- Site Information -->
+      <div class="mb-4 p-3 bg-white rounded-lg border border-teal-200">
+        <h4 class="font-bold text-teal-700 mb-2 border-b pb-1">
+          <i class="fas fa-map-pin mr-2"></i>Site Information
+        </h4>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+          <div><span class="font-semibold">Site Name:</span> ${scip.siteInfo.siteName || 'N/A'}</div>
+          <div><span class="font-semibold">Site ID:</span> ${scip.siteInfo.siteId || 'N/A'}</div>
+          <div><span class="font-semibold">Address:</span> ${scip.siteInfo.address || 'N/A'}</div>
+          <div><span class="font-semibold">City:</span> ${scip.siteInfo.city || 'N/A'}</div>
+          <div><span class="font-semibold">County:</span> ${scip.siteInfo.county || 'N/A'}</div>
+          <div><span class="font-semibold">State/ZIP:</span> ${scip.siteInfo.state || ''} ${scip.siteInfo.zip || ''}</div>
+          <div><span class="font-semibold">Latitude:</span> ${scip.siteInfo.latitude}</div>
+          <div><span class="font-semibold">Longitude:</span> ${scip.siteInfo.longitude}</div>
+          <div><span class="font-semibold">Jurisdiction:</span> ${scip.siteInfo.jurisdiction || 'N/A'}</div>
+        </div>
+      </div>
+
+      <!-- Property Owner -->
+      <div class="mb-4 p-3 bg-white rounded-lg border border-teal-200">
+        <h4 class="font-bold text-teal-700 mb-2 border-b pb-1">
+          <i class="fas fa-user mr-2"></i>Property Owner Information
+        </h4>
+        <div class="grid grid-cols-2 gap-2 text-sm">
+          <div><span class="font-semibold">Owner Name:</span> ${scip.propertyInfo.ownerName || 'N/A'}</div>
+          <div><span class="font-semibold">Phone:</span> ${scip.propertyInfo.ownerPhone || 'N/A'}</div>
+          <div class="col-span-2"><span class="font-semibold">Mailing Address:</span> ${scip.propertyInfo.ownerAddress || 'N/A'} ${scip.propertyInfo.ownerCity || ''} ${scip.propertyInfo.ownerState || ''} ${scip.propertyInfo.ownerZip || ''}</div>
+          <div><span class="font-semibold">Email:</span> ${scip.propertyInfo.ownerEmail || 'N/A'}</div>
+        </div>
+      </div>
+
+      <!-- Ground & Site Data -->
+      <div class="mb-4 p-3 bg-white rounded-lg border border-teal-200">
+        <h4 class="font-bold text-teal-700 mb-2 border-b pb-1">
+          <i class="fas fa-mountain mr-2"></i>Ground & Site Data
+        </h4>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+          <div><span class="font-semibold">Elevation:</span> ${scip.groundSiteData.elevationFt || 'N/A'} ft <span class="text-xs text-gray-500">(${scip.groundSiteData.elevationSource || 'N/A'})</span></div>
+          <div><span class="font-semibold">Property Type:</span> ${scip.groundSiteData.propertyType || 'N/A'}</div>
+          <div><span class="font-semibold">Land Use:</span> ${scip.groundSiteData.landUse || 'N/A'}</div>
+          <div><span class="font-semibold">Year Built:</span> ${scip.groundSiteData.yearBuilt || 'N/A'}</div>
+          <div><span class="font-semibold">Building Sq Ft:</span> ${scip.groundSiteData.buildingSqFt ? scip.groundSiteData.buildingSqFt.toLocaleString() : 'N/A'}</div>
+        </div>
+      </div>
+
+      <!-- Parcel & Tax Data -->
+      <div class="mb-4 p-3 bg-white rounded-lg border border-teal-200">
+        <h4 class="font-bold text-teal-700 mb-2 border-b pb-1">
+          <i class="fas fa-file-invoice-dollar mr-2"></i>Parcel & Tax Data
+        </h4>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+          <div><span class="font-semibold">APN:</span> ${scip.parcelTaxData.apn || scip.parcelTaxData.pin || 'N/A'}</div>
+          <div><span class="font-semibold">FIPS:</span> ${scip.parcelTaxData.fips || 'N/A'}</div>
+          <div><span class="font-semibold">Lot Size:</span> ${scip.parcelTaxData.lotSizeSqFt ? scip.parcelTaxData.lotSizeSqFt.toLocaleString() + ' sq ft' : 'N/A'} ${scip.parcelTaxData.lotSizeAcres ? '(' + scip.parcelTaxData.lotSizeAcres + ' acres)' : ''}</div>
+          <div><span class="font-semibold">Assessed Value:</span> ${scip.parcelTaxData.assessedValue ? '$' + scip.parcelTaxData.assessedValue.toLocaleString() : 'N/A'}</div>
+          <div><span class="font-semibold">Market Value:</span> ${scip.parcelTaxData.marketValue ? '$' + scip.parcelTaxData.marketValue.toLocaleString() : 'N/A'}</div>
+          <div><span class="font-semibold">Tax Amount:</span> ${scip.parcelTaxData.taxAmount ? '$' + scip.parcelTaxData.taxAmount.toLocaleString() : 'N/A'} ${scip.parcelTaxData.taxYear ? '(' + scip.parcelTaxData.taxYear + ')' : ''}</div>
+          <div class="col-span-2 md:col-span-3"><span class="font-semibold">Legal Description:</span> ${scip.parcelTaxData.legalDescription || 'N/A'}</div>
+        </div>
+      </div>
+
+      <!-- Environmental -->
+      <div class="mb-4 p-3 bg-white rounded-lg border border-teal-200">
+        <h4 class="font-bold text-teal-700 mb-2 border-b pb-1">
+          <i class="fas fa-leaf mr-2"></i>Environmental
+        </h4>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+          <div><span class="font-semibold">FEMA Flood Zone:</span> <span class="${scip.environmental.floodZone?.includes('A') || scip.environmental.floodZone?.includes('V') ? 'text-red-600 font-bold' : 'text-green-600'}">${scip.environmental.floodZone || 'N/A'}</span></div>
+          <div><span class="font-semibold">Special Flood Hazard:</span> ${scip.environmental.sfha || 'N/A'}</div>
+          <div><span class="font-semibold">Wetlands:</span> ${scip.environmental.wetlands || 'N/A'}</div>
+          <div><span class="font-semibold">Historic Preservation:</span> ${scip.environmental.historicPreservation || 'N/A'}</div>
+          <div><span class="font-semibold">Endangered Species:</span> ${scip.environmental.endangeredSpecies || 'N/A'}</div>
+        </div>
+      </div>
+
+      <!-- Zoning -->
+      <div class="mb-4 p-3 bg-white rounded-lg border border-teal-200">
+        <h4 class="font-bold text-teal-700 mb-2 border-b pb-1">
+          <i class="fas fa-building mr-2"></i>Zoning
+        </h4>
+        <div class="grid grid-cols-2 gap-2 text-sm">
+          <div><span class="font-semibold">Classification:</span> ${scip.zoning.classification || 'N/A'}</div>
+          <div><span class="font-semibold">Tower Permitted:</span> ${scip.zoning.towerPermitted || 'N/A'}</div>
+          <div><span class="font-semibold">Height Restrictions:</span> ${scip.zoning.heightRestrictions || 'N/A'}</div>
+          <div><span class="font-semibold">Setback Requirements:</span> ${scip.zoning.setbackRequirements || 'N/A'}</div>
+        </div>
+      </div>
+
+      <!-- Utilities -->
+      <div class="mb-4 p-3 bg-white rounded-lg border border-teal-200">
+        <h4 class="font-bold text-teal-700 mb-2 border-b pb-1">
+          <i class="fas fa-bolt mr-2"></i>Utilities
+        </h4>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+          <div><span class="font-semibold">Power:</span> ${scip.utilities.powerAvailable || 'N/A'}</div>
+          <div><span class="font-semibold">Telco:</span> ${scip.utilities.telcoAvailable || 'N/A'}</div>
+          <div><span class="font-semibold">Fiber:</span> ${scip.utilities.fiberAvailable || 'N/A'}</div>
+        </div>
+      </div>
+
+      <!-- Nearby Towers -->
+      ${scip.nearbyTowers && scip.nearbyTowers.count > 0 ? `
+        <div class="mb-4 p-3 bg-white rounded-lg border border-teal-200">
+          <h4 class="font-bold text-teal-700 mb-2 border-b pb-1">
+            <i class="fas fa-broadcast-tower mr-2"></i>Nearby Cell Towers (${scip.nearbyTowers.count} found within ~1km)
+          </h4>
+          <div class="text-xs overflow-x-auto">
+            <table class="w-full">
+              <thead><tr class="bg-gray-100"><th class="p-1">Radio</th><th class="p-1">MCC</th><th class="p-1">MNC</th><th class="p-1">LAC</th><th class="p-1">Cell ID</th><th class="p-1">Range (m)</th></tr></thead>
+              <tbody>
+                ${scip.nearbyTowers.towers.map(t => `<tr class="border-b"><td class="p-1">${t.radio}</td><td class="p-1">${t.mcc}</td><td class="p-1">${t.mnc}</td><td class="p-1">${t.lac}</td><td class="p-1">${t.cellid}</td><td class="p-1">${t.range || 'N/A'}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Map Links -->
+      <div class="p-3 bg-white rounded-lg border border-teal-200">
+        <h4 class="font-bold text-teal-700 mb-2 border-b pb-1">
+          <i class="fas fa-map mr-2"></i>Map Links
+        </h4>
+        <div class="flex flex-wrap gap-2">
+          <a href="${scip.mapLinks.googleMaps}" target="_blank" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm">
+            <i class="fas fa-map-marker-alt mr-1"></i>Google Maps
+          </a>
+          <a href="${scip.mapLinks.googleEarth}" target="_blank" class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm">
+            <i class="fas fa-globe mr-1"></i>Google Earth
+          </a>
+          <a href="${scip.mapLinks.bingMaps}" target="_blank" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm">
+            <i class="fas fa-map mr-1"></i>Bing Maps
+          </a>
+          <a href="${scip.mapLinks.openStreetMap}" target="_blank" class="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-sm">
+            <i class="fas fa-map-marked mr-1"></i>OpenStreetMap
+          </a>
+          <a href="${scip.mapLinks.usgsTopoMap}" target="_blank" class="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-sm">
+            <i class="fas fa-mountain mr-1"></i>USGS Topo
+          </a>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+// Export SCIP to CSV
+function exportSCIPToCSV() {
+  if (!currentSCIP) {
+    alert('No SCIP data to export')
+    return
+  }
+
+  const s = currentSCIP
+  const rows = [
+    ['SITE CANDIDATE INFORMATION PACKAGE (SCIP)'],
+    ['Generated', new Date(s.generatedAt).toLocaleString()],
+    [''],
+    ['SITE INFORMATION'],
+    ['Site Name', s.siteInfo.siteName],
+    ['Site ID', s.siteInfo.siteId],
+    ['Address', s.siteInfo.address],
+    ['City', s.siteInfo.city],
+    ['County', s.siteInfo.county],
+    ['State', s.siteInfo.state],
+    ['ZIP', s.siteInfo.zip],
+    ['Latitude', s.siteInfo.latitude],
+    ['Longitude', s.siteInfo.longitude],
+    ['Jurisdiction', s.siteInfo.jurisdiction],
+    [''],
+    ['PROPERTY OWNER'],
+    ['Owner Name', s.propertyInfo.ownerName],
+    ['Owner Address', s.propertyInfo.ownerAddress],
+    ['Owner City', s.propertyInfo.ownerCity],
+    ['Owner State', s.propertyInfo.ownerState],
+    ['Owner ZIP', s.propertyInfo.ownerZip],
+    ['Owner Phone', s.propertyInfo.ownerPhone],
+    ['Owner Email', s.propertyInfo.ownerEmail],
+    [''],
+    ['GROUND & SITE DATA'],
+    ['Elevation (ft)', s.groundSiteData.elevationFt],
+    ['Elevation Source', s.groundSiteData.elevationSource],
+    ['Property Type', s.groundSiteData.propertyType],
+    ['Land Use', s.groundSiteData.landUse],
+    ['Year Built', s.groundSiteData.yearBuilt],
+    ['Building Sq Ft', s.groundSiteData.buildingSqFt],
+    [''],
+    ['PARCEL & TAX DATA'],
+    ['APN', s.parcelTaxData.apn || s.parcelTaxData.pin],
+    ['FIPS', s.parcelTaxData.fips],
+    ['Lot Size (sq ft)', s.parcelTaxData.lotSizeSqFt],
+    ['Lot Size (acres)', s.parcelTaxData.lotSizeAcres],
+    ['Assessed Value', s.parcelTaxData.assessedValue],
+    ['Market Value', s.parcelTaxData.marketValue],
+    ['Tax Amount', s.parcelTaxData.taxAmount],
+    ['Tax Year', s.parcelTaxData.taxYear],
+    ['Legal Description', s.parcelTaxData.legalDescription],
+    [''],
+    ['ENVIRONMENTAL'],
+    ['Flood Zone', s.environmental.floodZone],
+    ['Special Flood Hazard Area', s.environmental.sfha],
+    ['Wetlands', s.environmental.wetlands],
+    ['Historic Preservation', s.environmental.historicPreservation],
+    ['Endangered Species', s.environmental.endangeredSpecies],
+    [''],
+    ['ZONING'],
+    ['Classification', s.zoning.classification],
+    ['Tower Permitted', s.zoning.towerPermitted],
+    ['Height Restrictions', s.zoning.heightRestrictions],
+    ['Setback Requirements', s.zoning.setbackRequirements],
+    [''],
+    ['UTILITIES'],
+    ['Power Available', s.utilities.powerAvailable],
+    ['Telco Available', s.utilities.telcoAvailable],
+    ['Fiber Available', s.utilities.fiberAvailable],
+    [''],
+    ['MAP LINKS'],
+    ['Google Maps', s.mapLinks.googleMaps],
+    ['Google Earth', s.mapLinks.googleEarth],
+    ['Bing Maps', s.mapLinks.bingMaps],
+    ['OpenStreetMap', s.mapLinks.openStreetMap],
+    ['USGS Topo', s.mapLinks.usgsTopoMap]
+  ]
+
+  const csv = rows.map(row => row.map(cell => `"${String(cell || '').replace(/"/g, '""')}"`).join(',')).join('\n')
+
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `SCIP-${s.siteInfo.siteName || 'report'}-${Date.now()}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+
+  alert('✅ SCIP exported to CSV')
+}
+
+// Print SCIP
+function printSCIP() {
+  window.print()
+}
+
+// Clear SCIP Form
+function clearSCIPForm() {
+  document.getElementById('scipSiteName').value = ''
+  document.getElementById('scipSiteId').value = ''
+  document.getElementById('scipAddress').value = ''
+  document.getElementById('scipCity').value = ''
+  document.getElementById('scipCounty').value = ''
+  document.getElementById('scipState').value = ''
+  document.getElementById('scipZip').value = ''
+  document.getElementById('scipLat').value = ''
+  document.getElementById('scipLon').value = ''
+  document.getElementById('scipJurisdiction').value = ''
+  document.getElementById('scipOwnerName').value = ''
+  document.getElementById('scipOwnerAddress').value = ''
+  document.getElementById('scipOwnerCity').value = ''
+  document.getElementById('scipOwnerState').value = ''
+  document.getElementById('scipOwnerZip').value = ''
+  document.getElementById('scipOwnerPhone').value = ''
+  document.getElementById('scipOwnerEmail').value = ''
+  document.getElementById('scipParcelPin').value = ''
+  document.getElementById('results').innerHTML = ''
+  currentSCIP = null
 }

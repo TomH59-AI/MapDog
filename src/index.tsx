@@ -66,27 +66,34 @@ app.get('/', (c) => {
           </div>
 
           {/* Mode Toggle */}
-          <div class="flex gap-2 mb-6 border-b-2 border-gray-200 pb-2">
-            <button 
+          <div class="flex flex-wrap gap-2 mb-6 border-b-2 border-gray-200 pb-2">
+            <button
               id="countyModeBtn"
               onclick="switchMode('county')"
               class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg transition-all"
             >
               <i class="fas fa-map-marker-alt mr-2"></i>County Search
             </button>
-            <button 
+            <button
               id="coordinateModeBtn"
               onclick="switchMode('coordinate')"
               class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
             >
               <i class="fas fa-crosshairs mr-2"></i>RF Coordinates
             </button>
-            <button 
+            <button
               id="bulkModeBtn"
               onclick="switchMode('bulk')"
               class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
             >
               <i class="fas fa-layer-group mr-2"></i>Bulk PINs
+            </button>
+            <button
+              id="scipModeBtn"
+              onclick="switchMode('scip')"
+              class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
+            >
+              <i class="fas fa-file-alt mr-2"></i>SCIP Generator
             </button>
           </div>
 
@@ -209,6 +216,83 @@ app.get('/', (c) => {
               <i class="fas fa-info-circle mr-1"></i>
               Paste PINs from your search ring tool • Max 50 PINs per search
             </p>
+          </div>
+
+          {/* SCIP Generator (Hidden by default) */}
+          <div id="scipSection" class="hidden mb-6">
+            <div class="bg-gradient-to-r from-teal-50 to-cyan-50 border-2 border-teal-300 rounded-lg p-4">
+              <h3 class="text-xl font-bold text-gray-800 mb-4">
+                <i class="fas fa-file-alt text-teal-600 mr-2"></i>
+                Site Candidate Information Package (SCIP)
+              </h3>
+
+              {/* Section 1: Site Information */}
+              <div class="mb-4 p-3 bg-white rounded-lg border border-teal-200">
+                <h4 class="font-semibold text-teal-700 mb-2">
+                  <i class="fas fa-map-pin mr-2"></i>Section 1: Site Information
+                </h4>
+                <div class="grid grid-cols-2 gap-3">
+                  <input type="text" id="scipSiteName" placeholder="Site Name *" class="px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                  <input type="text" id="scipSiteId" placeholder="Site ID" class="px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                  <input type="text" id="scipAddress" placeholder="Address *" class="px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                  <input type="text" id="scipCity" placeholder="City *" class="px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                  <input type="text" id="scipCounty" placeholder="County *" class="px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                  <div class="flex gap-2">
+                    <input type="text" id="scipState" placeholder="State" class="flex-1 px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                    <input type="text" id="scipZip" placeholder="ZIP" class="w-24 px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                  </div>
+                  <input type="text" id="scipLat" placeholder="Latitude * (e.g., 28.5383)" class="px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                  <input type="text" id="scipLon" placeholder="Longitude * (e.g., -81.3792)" class="px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                  <input type="text" id="scipJurisdiction" placeholder="Jurisdiction" class="col-span-2 px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                </div>
+              </div>
+
+              {/* Section 2: Property Owner Information */}
+              <div class="mb-4 p-3 bg-white rounded-lg border border-teal-200">
+                <h4 class="font-semibold text-teal-700 mb-2">
+                  <i class="fas fa-user mr-2"></i>Section 2: Property Owner (leave blank to auto-fill)
+                </h4>
+                <div class="grid grid-cols-2 gap-3">
+                  <input type="text" id="scipOwnerName" placeholder="Owner Name" class="col-span-2 px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                  <input type="text" id="scipOwnerAddress" placeholder="Owner Address" class="col-span-2 px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                  <input type="text" id="scipOwnerCity" placeholder="City" class="px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                  <div class="flex gap-2">
+                    <input type="text" id="scipOwnerState" placeholder="State" class="flex-1 px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                    <input type="text" id="scipOwnerZip" placeholder="ZIP" class="w-24 px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                  </div>
+                  <input type="text" id="scipOwnerPhone" placeholder="Phone" class="px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                  <input type="text" id="scipOwnerEmail" placeholder="Email" class="px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+                </div>
+              </div>
+
+              {/* Optional: Parcel PIN */}
+              <div class="mb-4 p-3 bg-white rounded-lg border border-teal-200">
+                <h4 class="font-semibold text-teal-700 mb-2">
+                  <i class="fas fa-barcode mr-2"></i>Optional: Parcel PIN (for MapWise lookup)
+                </h4>
+                <input type="text" id="scipParcelPin" placeholder="Parcel PIN (e.g., 03869-010-000)" class="w-full px-3 py-2 border rounded focus:border-teal-500 focus:outline-none" />
+              </div>
+
+              {/* Generate Button */}
+              <div class="flex gap-3">
+                <button
+                  onclick="generateSCIP()"
+                  class="flex-1 px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg transition-all transform hover:scale-105 shadow-lg"
+                >
+                  <i class="fas fa-magic mr-2"></i>Generate SCIP Report
+                </button>
+                <button
+                  onclick="clearSCIPForm()"
+                  class="px-6 py-3 bg-gray-400 hover:bg-gray-500 text-white font-semibold rounded-lg transition-all"
+                >
+                  <i class="fas fa-times mr-2"></i>Clear
+                </button>
+              </div>
+              <p class="text-xs text-gray-500 mt-2">
+                <i class="fas fa-info-circle mr-1"></i>
+                Auto-populates: Elevation (USGS) • Property/Tax Data (Attomdata) • Flood Zone (FEMA) • Nearby Towers (OpenCellID)
+              </p>
+            </div>
           </div>
 
           {/* Quick Actions */}
@@ -708,6 +792,273 @@ app.get('/api/searches/history', async (c) => {
     return c.json(result.results)
   } catch (error) {
     return c.json({ error: 'Failed to fetch search history' }, 500)
+  }
+})
+
+// API: Generate SCIP (Site Candidate Information Package)
+app.post('/api/scip/generate', async (c) => {
+  try {
+    const {
+      // Site Info (user provided)
+      siteName, siteId, address, city, county, state, zip, lat, lon, jurisdiction,
+      // Property Info (user provided)
+      ownerName, ownerAddress, ownerCity, ownerState, ownerZip, ownerPhone, ownerEmail,
+      // Parcel info
+      parcelPin
+    } = await c.req.json()
+
+    // Validate required fields
+    if (!lat || !lon) {
+      return c.json({ error: 'Latitude and longitude are required' }, 400)
+    }
+
+    const latitude = parseFloat(lat)
+    const longitude = parseFloat(lon)
+
+    // Initialize SCIP data structure
+    const scip: any = {
+      generatedAt: new Date().toISOString(),
+      siteInfo: {
+        siteName: siteName || '',
+        siteId: siteId || '',
+        address: address || '',
+        city: city || '',
+        county: county || '',
+        state: state || '',
+        zip: zip || '',
+        latitude,
+        longitude,
+        jurisdiction: jurisdiction || ''
+      },
+      propertyInfo: {
+        ownerName: ownerName || '',
+        ownerAddress: ownerAddress || '',
+        ownerCity: ownerCity || '',
+        ownerState: ownerState || '',
+        ownerZip: ownerZip || '',
+        ownerPhone: ownerPhone || '',
+        ownerEmail: ownerEmail || ''
+      },
+      groundSiteData: {},
+      parcelTaxData: {},
+      utilities: {},
+      zoning: {},
+      environmental: {},
+      mapLinks: {}
+    }
+
+    // ========================================
+    // 1. USGS Elevation Data
+    // ========================================
+    try {
+      const usgsUrl = `https://epqs.nationalmap.gov/v1/json?x=${longitude}&y=${latitude}&units=Feet&wkid=4326`
+      const usgsResponse = await fetch(usgsUrl)
+      if (usgsResponse.ok) {
+        const usgsData = await usgsResponse.json()
+        scip.groundSiteData.elevationFt = usgsData.value || 'N/A'
+        scip.groundSiteData.elevationSource = 'USGS National Map'
+      }
+    } catch (e) {
+      console.error('USGS elevation error:', e)
+      scip.groundSiteData.elevationFt = 'Unable to retrieve'
+    }
+
+    // ========================================
+    // 2. Attomdata Property Data
+    // ========================================
+    const attomApiKey = c.env.ATTOM_API_KEY || 'c9d313419e352532d4861cabe5fca533'
+    try {
+      // Get property by coordinates
+      const attomUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/basicprofile?latitude=${latitude}&longitude=${longitude}&radius=0.1`
+      const attomResponse = await fetch(attomUrl, {
+        headers: {
+          'apikey': attomApiKey,
+          'Accept': 'application/json'
+        }
+      })
+
+      if (attomResponse.ok) {
+        const attomData = await attomResponse.json()
+        const property = attomData.property?.[0]
+
+        if (property) {
+          // Property details
+          scip.parcelTaxData.apn = property.identifier?.apn || ''
+          scip.parcelTaxData.fips = property.identifier?.fips || ''
+          scip.parcelTaxData.legalDescription = property.lot?.legalDescription || ''
+          scip.parcelTaxData.lotSizeSqFt = property.lot?.lotSize1 || ''
+          scip.parcelTaxData.lotSizeAcres = property.lot?.lotSize2 || ''
+
+          // Assessment data
+          scip.parcelTaxData.assessedValue = property.assessment?.assessed?.assdTtlValue || ''
+          scip.parcelTaxData.marketValue = property.assessment?.market?.mktTtlValue || ''
+          scip.parcelTaxData.taxAmount = property.assessment?.tax?.taxAmt || ''
+          scip.parcelTaxData.taxYear = property.assessment?.tax?.taxYear || ''
+
+          // Building data
+          scip.groundSiteData.landUse = property.summary?.propClass || ''
+          scip.groundSiteData.propertyType = property.summary?.propType || ''
+          scip.groundSiteData.yearBuilt = property.building?.summary?.yearBuilt || ''
+          scip.groundSiteData.buildingSqFt = property.building?.size?.bldgSize || ''
+
+          // Update owner info if not provided
+          if (!ownerName && property.owner?.owner1?.fullName) {
+            scip.propertyInfo.ownerName = property.owner?.owner1?.fullName
+          }
+          if (!ownerAddress && property.owner?.mailingAddress?.line1) {
+            scip.propertyInfo.ownerAddress = property.owner?.mailingAddress?.line1
+            scip.propertyInfo.ownerCity = property.owner?.mailingAddress?.city || ''
+            scip.propertyInfo.ownerState = property.owner?.mailingAddress?.state || ''
+            scip.propertyInfo.ownerZip = property.owner?.mailingAddress?.zip || ''
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Attomdata error:', e)
+    }
+
+    // ========================================
+    // 3. MapWise Parcel Data (if county provided)
+    // ========================================
+    if (county) {
+      const mapwiseApiKey = c.env.MAPWISE_API_KEY || 'DEMO_KEY'
+      try {
+        const countyClean = county.trim().toUpperCase()
+        const mapwiseUrl = `https://maps.mapwise.com/api_v2/parcels?searchCounty=${encodeURIComponent(countyClean)}&limit=50`
+        const mapwiseResponse = await fetch(mapwiseUrl, {
+          headers: {
+            'Authorization': `Bearer ${mapwiseApiKey}`,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (mapwiseResponse.ok) {
+          const mapwiseData = await mapwiseResponse.json()
+          // Try to find matching parcel by PIN if provided
+          if (parcelPin && mapwiseData.data) {
+            const normalizedPin = parcelPin.replace(/[^0-9a-zA-Z]/g, '').toUpperCase()
+            const matchedParcel = mapwiseData.data.find((p: any) => {
+              const pPin = (p.identifiers?.pin || '').replace(/[^0-9a-zA-Z]/g, '').toUpperCase()
+              return pPin === normalizedPin
+            })
+            if (matchedParcel) {
+              scip.parcelTaxData.pin = matchedParcel.identifiers?.pin || ''
+              scip.parcelTaxData.mapwiseData = matchedParcel
+            }
+          }
+        }
+      } catch (e) {
+        console.error('MapWise error:', e)
+      }
+    }
+
+    // ========================================
+    // 4. FEMA Flood Zone Data
+    // ========================================
+    try {
+      const femaUrl = `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28/query?geometry=${longitude},${latitude}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json`
+      const femaResponse = await fetch(femaUrl)
+      if (femaResponse.ok) {
+        const femaData = await femaResponse.json()
+        if (femaData.features && femaData.features.length > 0) {
+          const floodZone = femaData.features[0].attributes
+          scip.environmental.floodZone = floodZone.FLD_ZONE || 'X'
+          scip.environmental.floodZoneSubtype = floodZone.ZONE_SUBTY || ''
+          scip.environmental.sfha = floodZone.SFHA_TF === 'T' ? 'Yes' : 'No'
+        } else {
+          scip.environmental.floodZone = 'X (Minimal Risk)'
+          scip.environmental.sfha = 'No'
+        }
+      }
+    } catch (e) {
+      console.error('FEMA flood zone error:', e)
+      scip.environmental.floodZone = 'Unable to retrieve'
+    }
+
+    // ========================================
+    // 5. Generate Map Links
+    // ========================================
+    scip.mapLinks = {
+      googleMaps: `https://www.google.com/maps?q=${latitude},${longitude}`,
+      googleEarth: `https://earth.google.com/web/@${latitude},${longitude},500a,500d,35y,0h,0t,0r`,
+      bingMaps: `https://www.bing.com/maps?cp=${latitude}~${longitude}&lvl=18&style=h`,
+      openStreetMap: `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}&zoom=18`,
+      usgsTopoMap: `https://apps.nationalmap.gov/viewer/?location=${latitude},${longitude}`
+    }
+
+    // ========================================
+    // 6. OpenCellID - Nearby Towers
+    // ========================================
+    const opencellApiKey = c.env.OPENCELLID_API_KEY || 'pk.6d4e560229de9121955a48aa246647b2'
+    try {
+      const opencellUrl = `https://opencellid.org/cell/getInArea?key=${opencellApiKey}&BBOX=${latitude - 0.01},${longitude - 0.01},${latitude + 0.01},${longitude + 0.01}&format=json`
+      const opencellResponse = await fetch(opencellUrl)
+      if (opencellResponse.ok) {
+        const opencellData = await opencellResponse.json()
+        scip.nearbyTowers = {
+          count: opencellData.count || 0,
+          towers: (opencellData.cells || []).slice(0, 10).map((cell: any) => ({
+            radio: cell.radio,
+            mcc: cell.mcc,
+            mnc: cell.mnc,
+            lac: cell.lac,
+            cellid: cell.cellid,
+            lat: cell.lat,
+            lon: cell.lon,
+            range: cell.range
+          }))
+        }
+      }
+    } catch (e) {
+      console.error('OpenCellID error:', e)
+    }
+
+    // ========================================
+    // 7. Set defaults for unknown fields
+    // ========================================
+    scip.utilities = {
+      powerAvailable: 'To Be Verified',
+      powerProvider: '',
+      telcoAvailable: 'To Be Verified',
+      telcoProvider: '',
+      fiberAvailable: 'To Be Verified'
+    }
+
+    scip.zoning = {
+      classification: scip.groundSiteData.landUse || 'To Be Verified',
+      towerPermitted: 'To Be Verified',
+      heightRestrictions: 'To Be Verified',
+      setbackRequirements: 'To Be Verified'
+    }
+
+    scip.environmental.wetlands = 'To Be Verified (NWI)'
+    scip.environmental.historicPreservation = 'To Be Verified (SHPO)'
+    scip.environmental.endangeredSpecies = 'To Be Verified (USFWS)'
+
+    // Save SCIP to database
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO searches (county, search_params, results_count) VALUES (?, ?, ?)'
+      ).bind(
+        county || 'SCIP',
+        JSON.stringify({ type: 'scip', siteName, lat: latitude, lon: longitude }),
+        1
+      ).run()
+    } catch (dbError) {
+      console.error('Database save error:', dbError)
+    }
+
+    return c.json({
+      success: true,
+      scip
+    })
+
+  } catch (error) {
+    console.error('SCIP generation error:', error)
+    return c.json({
+      error: 'Failed to generate SCIP',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
   }
 })
 
