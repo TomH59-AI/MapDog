@@ -493,17 +493,51 @@ function displayResults(parcels, county, meta) {
   `
 }
 
-// Render individual parcel card
+// Render individual parcel card with FL Cadastral data
 function renderParcelCard(parcel, index, county) {
+  // Support both old and new data formats
   const pin = parcel.identifiers?.pin || `${county}-${index}`
-  const owner = parcel.owner?.primary_name || 'N/A'
-  const address = parcel.site?.address || 'No address'
-  const acres = parcel.land?.acres_gis || parcel.land?.acres_deed || 'N/A'
-  const zoning = parcel.land?.zoning || 'N/A'
-  const landUse = parcel.land?.land_use?.luse_desc || 'N/A'
-  const marketValue = parcel.valuation?.market?.total || 0
-  const city = parcel.site?.city || parcel.owner?.city || 'N/A'
-  
+
+  // Owner info - handle both old format (string) and new format (object)
+  const ownerName = typeof parcel.owner === 'object' ? parcel.owner?.name : (parcel.owner || 'N/A')
+  const ownerMailing = typeof parcel.owner === 'object' && parcel.owner?.mailingAddress ?
+    `${parcel.owner.mailingAddress.street}, ${parcel.owner.mailingAddress.city}, ${parcel.owner.mailingAddress.state} ${parcel.owner.mailingAddress.zip}`.replace(/^, |, $/g, '') : null
+
+  // Address - handle both formats
+  const address = parcel.address?.street || parcel.site?.address || 'No address'
+  const city = parcel.address?.city || parcel.site?.city || 'N/A'
+  const zip = parcel.address?.zip || ''
+
+  // Land info
+  const acres = parcel.acreage || parcel.land?.acres_gis || 'N/A'
+  const landUseCode = parcel.landUse?.dorCode || parcel.land?.zoning || 'N/A'
+
+  // Values - handle both formats
+  const justValue = parcel.values?.justValue || parcel.valuation?.market?.total || 0
+  const landValue = parcel.values?.landValue || 0
+  const improvementValue = parcel.values?.improvementValue || 0
+
+  // Legal description
+  const legal = parcel.legal?.sectionTownshipRange || ''
+  const legalDesc = parcel.legal?.description || ''
+
+  // Building info
+  const yearBuilt = parcel.building?.yearBuilt || null
+  const livingArea = parcel.building?.livingArea || 0
+  const numBuildings = parcel.building?.numBuildings || 0
+
+  // Sale info
+  const salePrice = parcel.sale?.price || 0
+  const saleYear = parcel.sale?.year || null
+
+  // Distance (for coordinate searches)
+  const distanceMiles = parcel.distanceMiles
+
+  // Coordinates
+  const lat = parcel.geometry?.latitude
+  const lon = parcel.geometry?.longitude
+  const googleMapsUrl = lat && lon ? `https://www.google.com/maps?q=${lat},${lon}` : null
+
   return `
     <div class="bg-gray-50 border-2 border-gray-200 rounded-lg p-4 hover:border-blue-400 transition-all">
       <div class="flex justify-between items-start">
@@ -511,40 +545,93 @@ function renderParcelCard(parcel, index, county) {
           <h4 class="font-bold text-lg text-gray-800 mb-2">
             <i class="fas fa-map-pin text-red-500 mr-2"></i>
             PIN: ${pin}
+            ${distanceMiles !== undefined ? `<span class="ml-2 text-sm font-normal text-green-600"><i class="fas fa-ruler mr-1"></i>${distanceMiles} mi</span>` : ''}
           </h4>
-          <div class="grid grid-cols-2 gap-2 text-sm mb-2">
-            <div class="text-gray-600">
-              <span class="font-semibold">Owner:</span> ${owner}
+
+          <!-- Owner Section -->
+          <div class="bg-blue-50 rounded p-2 mb-2">
+            <div class="text-sm font-semibold text-blue-800 mb-1">
+              <i class="fas fa-user mr-1"></i>Owner Information
             </div>
-            <div class="text-gray-600">
-              <span class="font-semibold">City:</span> ${city}
-            </div>
+            <div class="text-sm text-gray-700">${ownerName}</div>
+            ${ownerMailing && ownerMailing.trim() ? `
+              <div class="text-xs text-gray-500 mt-1">
+                <i class="fas fa-envelope mr-1"></i>Mailing: ${ownerMailing}
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Property Details Grid -->
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm mb-2">
             <div class="text-gray-600">
               <span class="font-semibold">Address:</span> ${address}
             </div>
             <div class="text-gray-600">
-              <span class="font-semibold">Acres:</span> ${typeof acres === 'string' ? parseFloat(acres).toFixed(2) : acres}
-            </div>
-            <div class="text-gray-600">
-              <span class="font-semibold">Zoning:</span> ${zoning}
-            </div>
-            <div class="text-gray-600">
-              <span class="font-semibold">Land Use:</span> ${landUse}
-            </div>
-            <div class="text-gray-600">
-              <span class="font-semibold">Market Value:</span> $${marketValue.toLocaleString()}
+              <span class="font-semibold">City:</span> ${city} ${zip}
             </div>
             <div class="text-gray-600">
               <span class="font-semibold">County:</span> ${county}
             </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Acres:</span> ${typeof acres === 'number' ? acres.toFixed(2) : acres}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">DOR Code:</span> ${landUseCode}
+            </div>
+            ${legal ? `
+              <div class="text-gray-600">
+                <span class="font-semibold">Sec-Twp-Rng:</span> ${legal}
+              </div>
+            ` : ''}
           </div>
-          ${parcel.meta?.pa_pin_link ? `
-            <a href="${parcel.meta.pa_pin_link}" target="_blank" class="text-blue-600 hover:text-blue-800 text-xs">
-              <i class="fas fa-external-link-alt mr-1"></i>View Property Details
-            </a>
+
+          <!-- Values Section -->
+          <div class="grid grid-cols-3 gap-2 text-xs bg-green-50 rounded p-2 mb-2">
+            <div class="text-green-800">
+              <span class="font-semibold">Just Value:</span><br>$${justValue.toLocaleString()}
+            </div>
+            <div class="text-green-700">
+              <span class="font-semibold">Land:</span><br>$${landValue.toLocaleString()}
+            </div>
+            <div class="text-green-700">
+              <span class="font-semibold">Improvements:</span><br>$${improvementValue.toLocaleString()}
+            </div>
+          </div>
+
+          <!-- Building & Sale Info -->
+          ${(yearBuilt || livingArea || salePrice) ? `
+            <div class="grid grid-cols-3 gap-2 text-xs text-gray-600 mb-2">
+              ${yearBuilt ? `<div><span class="font-semibold">Year Built:</span> ${yearBuilt}</div>` : '<div></div>'}
+              ${livingArea ? `<div><span class="font-semibold">Living Area:</span> ${livingArea.toLocaleString()} sqft</div>` : '<div></div>'}
+              ${salePrice && saleYear ? `<div><span class="font-semibold">Last Sale:</span> $${salePrice.toLocaleString()} (${saleYear})</div>` : '<div></div>'}
+            </div>
           ` : ''}
+
+          <!-- Legal Description (collapsible) -->
+          ${legalDesc ? `
+            <details class="text-xs mb-2">
+              <summary class="cursor-pointer text-gray-600 hover:text-gray-800">
+                <i class="fas fa-file-alt mr-1"></i>Legal Description
+              </summary>
+              <div class="mt-1 p-2 bg-gray-100 rounded text-gray-700">${legalDesc}</div>
+            </details>
+          ` : ''}
+
+          <!-- Action Links -->
+          <div class="flex gap-2 mt-2">
+            ${googleMapsUrl ? `
+              <a href="${googleMapsUrl}" target="_blank" class="text-blue-600 hover:text-blue-800 text-xs">
+                <i class="fas fa-map-marker-alt mr-1"></i>Google Maps
+              </a>
+            ` : ''}
+            ${lat && lon ? `
+              <span class="text-xs text-gray-500">
+                <i class="fas fa-globe mr-1"></i>${lat.toFixed(5)}, ${lon.toFixed(5)}
+              </span>
+            ` : ''}
+          </div>
         </div>
-        <button 
+        <button
           onclick="saveParcel('${pin.replace(/'/g, "\\'")}', '${county}', ${index})"
           class="ml-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all transform hover:scale-105"
           title="Save to favorites"
@@ -758,42 +845,69 @@ async function viewSearchHistory() {
   }
 }
 
-// Export current results to CSV
+// Export current results to CSV (FL Cadastral format)
 function exportResults() {
   if (!currentResults || currentResults.length === 0) {
     alert('No results to export. Please search first.')
     return
   }
-  
-  // Define CSV columns
+
+  // Define CSV columns for RF Site Acquisition
   const headers = [
-    'PIN', 'County', 'Owner', 'Address', 'City', 'Zipcode', 
-    'Acres (GIS)', 'Acres (Deed)', 'Zoning', 'Land Use', 
-    'Market Value', 'Assessed Value', 'Year Built', 'Property Link'
+    'PIN', 'County', 'Owner Name', 'Owner Mailing Address', 'Owner City', 'Owner State', 'Owner Zip',
+    'Site Address', 'Site City', 'Site Zip',
+    'Sec-Twp-Rng', 'Legal Description', 'Acres', 'DOR Land Use Code',
+    'Just Value', 'Land Value', 'Improvement Value',
+    'Year Built', 'Living Area (sqft)', 'Buildings',
+    'Last Sale Price', 'Last Sale Year',
+    'Latitude', 'Longitude', 'Distance (mi)', 'Google Maps'
   ]
-  
+
   // Build CSV rows
   const rows = currentResults.map(parcel => {
+    // Handle both old and new formats
+    const ownerName = typeof parcel.owner === 'object' ? parcel.owner?.name : (parcel.owner || '')
+    const ownerStreet = parcel.owner?.mailingAddress?.street || ''
+    const ownerCity = parcel.owner?.mailingAddress?.city || ''
+    const ownerState = parcel.owner?.mailingAddress?.state || ''
+    const ownerZip = parcel.owner?.mailingAddress?.zip || ''
+
+    const lat = parcel.geometry?.latitude || ''
+    const lon = parcel.geometry?.longitude || ''
+    const googleMaps = lat && lon ? `https://www.google.com/maps?q=${lat},${lon}` : ''
+
     return [
       parcel.identifiers?.pin || '',
-      parcel.meta?.county || '',
-      parcel.owner?.primary_name || '',
-      parcel.site?.address || parcel.owner?.address_line1 || '',
-      parcel.site?.city || parcel.owner?.city || '',
-      parcel.site?.zipcode || parcel.owner?.zipcode || '',
-      parcel.land?.acres_gis || '',
-      parcel.land?.acres_deed || '',
-      parcel.land?.zoning || '',
-      parcel.land?.land_use?.luse_desc || '',
-      parcel.valuation?.market?.total || '',
-      parcel.valuation?.assessed_total || '',
-      parcel.building?.year_built_actual || '',
-      parcel.meta?.pa_pin_link || ''
+      parcel._searchRing?.county || '',
+      ownerName,
+      ownerStreet,
+      ownerCity,
+      ownerState,
+      ownerZip,
+      parcel.address?.street || parcel.site?.address || '',
+      parcel.address?.city || parcel.site?.city || '',
+      parcel.address?.zip || '',
+      parcel.legal?.sectionTownshipRange || '',
+      parcel.legal?.description || '',
+      parcel.acreage || parcel.land?.acres_gis || '',
+      parcel.landUse?.dorCode || parcel.land?.zoning || '',
+      parcel.values?.justValue || parcel.valuation?.market?.total || '',
+      parcel.values?.landValue || '',
+      parcel.values?.improvementValue || '',
+      parcel.building?.yearBuilt || parcel.building?.year_built_actual || '',
+      parcel.building?.livingArea || '',
+      parcel.building?.numBuildings || '',
+      parcel.sale?.price || '',
+      parcel.sale?.year || '',
+      lat,
+      lon,
+      parcel.distanceMiles || '',
+      googleMaps
     ].map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')
   })
-  
+
   const csv = [headers.join(','), ...rows].join('\n')
-  
+
   // Download
   const blob = new Blob([csv], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
@@ -802,8 +916,8 @@ function exportResults() {
   a.download = `mapdog-parcels-${Date.now()}.csv`
   a.click()
   URL.revokeObjectURL(url)
-  
-  alert(`✅ Exported ${currentResults.length} parcels to CSV`)
+
+  alert(`✅ Exported ${currentResults.length} parcels to CSV\n\nIncludes owner contact info, legal descriptions, values, and coordinates for RF site acquisition.`)
 }
 
 // Load statistics

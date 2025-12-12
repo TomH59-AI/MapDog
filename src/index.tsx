@@ -398,11 +398,21 @@ app.get('/api/parcels/search', async (c) => {
     }, 400)
   }
 
+  // Extended fields for RF Site Acquisition
+  const outFields = [
+    'PARCEL_ID', 'CO_NAME', 'PHY_ADDR1', 'PHY_ADDR2', 'PHY_CITY', 'PHY_ZIPCD',
+    'OWNER1', 'OWNER2', 'OWN_ADDR1', 'OWN_ADDR2', 'OWN_CITY', 'OWN_STATE', 'OWN_ZIPCD',
+    'DOR_UC', 'PA_UC', 'JV', 'TV_NSD', 'LND_VAL', 'ACREAGE',
+    'SEC', 'TWP', 'RNG', 'S_LEGAL',
+    'ACT_YR_BLT', 'EFF_YR_BLT', 'TOT_LVG_AR', 'NO_BULDNG',
+    'SALE_PRC1', 'SALE_YR1', 'SALE_MO1'
+  ].join(',')
+
   try {
     // Florida Cadastral ArcGIS REST API - FREE public data
     const arcgisUrl = new URL('https://services1.arcgis.com/O1JpcwDW8sjYuddV/arcgis/rest/services/Florida_Parcels/FeatureServer/0/query')
     arcgisUrl.searchParams.set('where', `UPPER(CO_NAME) LIKE '%${countyClean}%'`)
-    arcgisUrl.searchParams.set('outFields', 'PARCEL_ID,CO_NAME,PHY_ADDR1,PHY_CITY,PHY_ZIPCD,OWNER1,DOR_UC,JV,TV_NSD,LND_VAL,ACREAGE')
+    arcgisUrl.searchParams.set('outFields', outFields)
     arcgisUrl.searchParams.set('returnGeometry', 'true')
     arcgisUrl.searchParams.set('outSR', '4326')
     arcgisUrl.searchParams.set('resultRecordCount', limit.toString())
@@ -448,29 +458,63 @@ app.get('/api/parcels/search', async (c) => {
       })
     }
 
-    // Transform ArcGIS response to our format
-    const parcels = features.map((f: any) => ({
-      identifiers: {
-        pin: f.attributes.PARCEL_ID || 'N/A'
-      },
-      address: {
-        street: f.attributes.PHY_ADDR1 || '',
-        city: f.attributes.PHY_CITY || '',
-        zip: f.attributes.PHY_ZIPCD || ''
-      },
-      owner: f.attributes.OWNER1 || 'Unknown',
-      landUseCode: f.attributes.DOR_UC || '',
-      values: {
-        justValue: f.attributes.JV || 0,
-        taxableValue: f.attributes.TV_NSD || 0,
-        landValue: f.attributes.LND_VAL || 0
-      },
-      acreage: f.attributes.ACREAGE || 0,
-      geometry: f.geometry ? {
-        latitude: f.geometry.y,
-        longitude: f.geometry.x
-      } : null
-    }))
+    // Transform ArcGIS response to comprehensive parcel data
+    const parcels = features.map((f: any) => {
+      const a = f.attributes
+      return {
+        identifiers: {
+          pin: a.PARCEL_ID || 'N/A',
+          altKey: a.ALT_KEY || null
+        },
+        address: {
+          street: [a.PHY_ADDR1, a.PHY_ADDR2].filter(Boolean).join(' ') || '',
+          city: a.PHY_CITY || '',
+          zip: a.PHY_ZIPCD || ''
+        },
+        owner: {
+          name: [a.OWNER1, a.OWNER2].filter(Boolean).join(', ') || 'Unknown',
+          mailingAddress: {
+            street: [a.OWN_ADDR1, a.OWN_ADDR2].filter(Boolean).join(' ') || '',
+            city: a.OWN_CITY || '',
+            state: a.OWN_STATE || 'FL',
+            zip: a.OWN_ZIPCD || ''
+          }
+        },
+        legal: {
+          section: a.SEC || '',
+          township: a.TWP || '',
+          range: a.RNG || '',
+          description: a.S_LEGAL || '',
+          sectionTownshipRange: [a.SEC, a.TWP, a.RNG].filter(Boolean).join('-') || ''
+        },
+        landUse: {
+          dorCode: a.DOR_UC || '',
+          paCode: a.PA_UC || ''
+        },
+        values: {
+          justValue: a.JV || 0,
+          taxableValue: a.TV_NSD || 0,
+          landValue: a.LND_VAL || 0,
+          improvementValue: (a.JV || 0) - (a.LND_VAL || 0)
+        },
+        building: {
+          yearBuilt: a.ACT_YR_BLT || null,
+          effectiveYear: a.EFF_YR_BLT || null,
+          livingArea: a.TOT_LVG_AR || 0,
+          numBuildings: a.NO_BULDNG || 0
+        },
+        sale: {
+          price: a.SALE_PRC1 || 0,
+          year: a.SALE_YR1 || null,
+          month: a.SALE_MO1 || null
+        },
+        acreage: a.ACREAGE || 0,
+        geometry: f.geometry ? {
+          latitude: f.geometry.y,
+          longitude: f.geometry.x
+        } : null
+      }
+    })
 
     // Save successful search to database
     try {
@@ -549,6 +593,16 @@ app.post('/api/parcels/coordinate-search', async (c) => {
     const radiusMiles = unit === 'km' ? searchRadius * 0.621371 : searchRadius
     const radiusMeters = radiusMiles * 1609.34
 
+    // Extended fields for RF Site Acquisition
+    const outFields = [
+      'PARCEL_ID', 'CO_NAME', 'PHY_ADDR1', 'PHY_ADDR2', 'PHY_CITY', 'PHY_ZIPCD',
+      'OWNER1', 'OWNER2', 'OWN_ADDR1', 'OWN_ADDR2', 'OWN_CITY', 'OWN_STATE', 'OWN_ZIPCD',
+      'DOR_UC', 'PA_UC', 'JV', 'TV_NSD', 'LND_VAL', 'ACREAGE',
+      'SEC', 'TWP', 'RNG', 'S_LEGAL',
+      'ACT_YR_BLT', 'EFF_YR_BLT', 'TOT_LVG_AR', 'NO_BULDNG',
+      'SALE_PRC1', 'SALE_YR1', 'SALE_MO1'
+    ].join(',')
+
     // Florida Cadastral ArcGIS REST API with spatial query
     const arcgisUrl = new URL('https://services1.arcgis.com/O1JpcwDW8sjYuddV/arcgis/rest/services/Florida_Parcels/FeatureServer/0/query')
 
@@ -559,7 +613,7 @@ app.post('/api/parcels/coordinate-search', async (c) => {
     arcgisUrl.searchParams.set('spatialRel', 'esriSpatialRelIntersects')
     arcgisUrl.searchParams.set('distance', radiusMeters.toString())
     arcgisUrl.searchParams.set('units', 'esriSRUnit_Meter')
-    arcgisUrl.searchParams.set('outFields', 'PARCEL_ID,CO_NAME,PHY_ADDR1,PHY_CITY,PHY_ZIPCD,OWNER1,DOR_UC,JV,TV_NSD,LND_VAL,ACREAGE')
+    arcgisUrl.searchParams.set('outFields', outFields)
     arcgisUrl.searchParams.set('returnGeometry', 'true')
     arcgisUrl.searchParams.set('outSR', '4326')
     arcgisUrl.searchParams.set('resultRecordCount', '100')
@@ -598,29 +652,61 @@ app.post('/api/parcels/coordinate-search', async (c) => {
       return R * c
     }
 
-    // Transform and add distance to each parcel
+    // Transform and add distance to each parcel with full data
     const results = features.map((f: any) => {
+      const a = f.attributes
       const parcelLat = f.geometry?.y || 0
       const parcelLon = f.geometry?.x || 0
       const distanceMiles = haversineDistance(latitude, longitude, parcelLat, parcelLon)
 
       return {
         identifiers: {
-          pin: f.attributes.PARCEL_ID || 'N/A'
+          pin: a.PARCEL_ID || 'N/A',
+          altKey: a.ALT_KEY || null
         },
         address: {
-          street: f.attributes.PHY_ADDR1 || '',
-          city: f.attributes.PHY_CITY || '',
-          zip: f.attributes.PHY_ZIPCD || ''
+          street: [a.PHY_ADDR1, a.PHY_ADDR2].filter(Boolean).join(' ') || '',
+          city: a.PHY_CITY || '',
+          zip: a.PHY_ZIPCD || ''
         },
-        owner: f.attributes.OWNER1 || 'Unknown',
-        landUseCode: f.attributes.DOR_UC || '',
+        owner: {
+          name: [a.OWNER1, a.OWNER2].filter(Boolean).join(', ') || 'Unknown',
+          mailingAddress: {
+            street: [a.OWN_ADDR1, a.OWN_ADDR2].filter(Boolean).join(' ') || '',
+            city: a.OWN_CITY || '',
+            state: a.OWN_STATE || 'FL',
+            zip: a.OWN_ZIPCD || ''
+          }
+        },
+        legal: {
+          section: a.SEC || '',
+          township: a.TWP || '',
+          range: a.RNG || '',
+          description: a.S_LEGAL || '',
+          sectionTownshipRange: [a.SEC, a.TWP, a.RNG].filter(Boolean).join('-') || ''
+        },
+        landUse: {
+          dorCode: a.DOR_UC || '',
+          paCode: a.PA_UC || ''
+        },
         values: {
-          justValue: f.attributes.JV || 0,
-          taxableValue: f.attributes.TV_NSD || 0,
-          landValue: f.attributes.LND_VAL || 0
+          justValue: a.JV || 0,
+          taxableValue: a.TV_NSD || 0,
+          landValue: a.LND_VAL || 0,
+          improvementValue: (a.JV || 0) - (a.LND_VAL || 0)
         },
-        acreage: f.attributes.ACREAGE || 0,
+        building: {
+          yearBuilt: a.ACT_YR_BLT || null,
+          effectiveYear: a.EFF_YR_BLT || null,
+          livingArea: a.TOT_LVG_AR || 0,
+          numBuildings: a.NO_BULDNG || 0
+        },
+        sale: {
+          price: a.SALE_PRC1 || 0,
+          year: a.SALE_YR1 || null,
+          month: a.SALE_MO1 || null
+        },
+        acreage: a.ACREAGE || 0,
         geometry: {
           latitude: parcelLat,
           longitude: parcelLon
@@ -716,10 +802,20 @@ app.post('/api/parcels/bulk-search', async (c) => {
     const pinConditions = pinList.map((pin: string) => `PARCEL_ID = '${pin.replace(/'/g, "''")}'`).join(' OR ')
     const whereClause = `UPPER(CO_NAME) LIKE '%${countyClean}%' AND (${pinConditions})`
 
+    // Extended fields for RF Site Acquisition
+    const outFields = [
+      'PARCEL_ID', 'CO_NAME', 'PHY_ADDR1', 'PHY_ADDR2', 'PHY_CITY', 'PHY_ZIPCD',
+      'OWNER1', 'OWNER2', 'OWN_ADDR1', 'OWN_ADDR2', 'OWN_CITY', 'OWN_STATE', 'OWN_ZIPCD',
+      'DOR_UC', 'PA_UC', 'JV', 'TV_NSD', 'LND_VAL', 'ACREAGE',
+      'SEC', 'TWP', 'RNG', 'S_LEGAL',
+      'ACT_YR_BLT', 'EFF_YR_BLT', 'TOT_LVG_AR', 'NO_BULDNG',
+      'SALE_PRC1', 'SALE_YR1', 'SALE_MO1'
+    ].join(',')
+
     // Florida Cadastral ArcGIS REST API
     const arcgisUrl = new URL('https://services1.arcgis.com/O1JpcwDW8sjYuddV/arcgis/rest/services/Florida_Parcels/FeatureServer/0/query')
     arcgisUrl.searchParams.set('where', whereClause)
-    arcgisUrl.searchParams.set('outFields', 'PARCEL_ID,CO_NAME,PHY_ADDR1,PHY_CITY,PHY_ZIPCD,OWNER1,DOR_UC,JV,TV_NSD,LND_VAL,ACREAGE')
+    arcgisUrl.searchParams.set('outFields', outFields)
     arcgisUrl.searchParams.set('returnGeometry', 'true')
     arcgisUrl.searchParams.set('outSR', '4326')
     arcgisUrl.searchParams.set('resultRecordCount', '100')
@@ -746,29 +842,63 @@ app.post('/api/parcels/bulk-search', async (c) => {
 
     const features = arcgisData.features || []
 
-    // Transform results
-    const results = features.map((f: any) => ({
-      identifiers: {
-        pin: f.attributes.PARCEL_ID || 'N/A'
-      },
-      address: {
-        street: f.attributes.PHY_ADDR1 || '',
-        city: f.attributes.PHY_CITY || '',
-        zip: f.attributes.PHY_ZIPCD || ''
-      },
-      owner: f.attributes.OWNER1 || 'Unknown',
-      landUseCode: f.attributes.DOR_UC || '',
-      values: {
-        justValue: f.attributes.JV || 0,
-        taxableValue: f.attributes.TV_NSD || 0,
-        landValue: f.attributes.LND_VAL || 0
-      },
-      acreage: f.attributes.ACREAGE || 0,
-      geometry: f.geometry ? {
-        latitude: f.geometry.y,
-        longitude: f.geometry.x
-      } : null
-    }))
+    // Transform results with full data
+    const results = features.map((f: any) => {
+      const a = f.attributes
+      return {
+        identifiers: {
+          pin: a.PARCEL_ID || 'N/A',
+          altKey: a.ALT_KEY || null
+        },
+        address: {
+          street: [a.PHY_ADDR1, a.PHY_ADDR2].filter(Boolean).join(' ') || '',
+          city: a.PHY_CITY || '',
+          zip: a.PHY_ZIPCD || ''
+        },
+        owner: {
+          name: [a.OWNER1, a.OWNER2].filter(Boolean).join(', ') || 'Unknown',
+          mailingAddress: {
+            street: [a.OWN_ADDR1, a.OWN_ADDR2].filter(Boolean).join(' ') || '',
+            city: a.OWN_CITY || '',
+            state: a.OWN_STATE || 'FL',
+            zip: a.OWN_ZIPCD || ''
+          }
+        },
+        legal: {
+          section: a.SEC || '',
+          township: a.TWP || '',
+          range: a.RNG || '',
+          description: a.S_LEGAL || '',
+          sectionTownshipRange: [a.SEC, a.TWP, a.RNG].filter(Boolean).join('-') || ''
+        },
+        landUse: {
+          dorCode: a.DOR_UC || '',
+          paCode: a.PA_UC || ''
+        },
+        values: {
+          justValue: a.JV || 0,
+          taxableValue: a.TV_NSD || 0,
+          landValue: a.LND_VAL || 0,
+          improvementValue: (a.JV || 0) - (a.LND_VAL || 0)
+        },
+        building: {
+          yearBuilt: a.ACT_YR_BLT || null,
+          effectiveYear: a.EFF_YR_BLT || null,
+          livingArea: a.TOT_LVG_AR || 0,
+          numBuildings: a.NO_BULDNG || 0
+        },
+        sale: {
+          price: a.SALE_PRC1 || 0,
+          year: a.SALE_YR1 || null,
+          month: a.SALE_MO1 || null
+        },
+        acreage: a.ACREAGE || 0,
+        geometry: f.geometry ? {
+          latitude: f.geometry.y,
+          longitude: f.geometry.x
+        } : null
+      }
+    })
 
     // Track which PINs were not found
     const foundPins = new Set(results.map((r: any) => r.identifiers.pin))
