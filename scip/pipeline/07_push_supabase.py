@@ -9,8 +9,17 @@ Pushes Golden Hour SCIP data to Supabase using the correct table schemas:
   - zoning_ordinances (Municode data)
 """
 
-import requests, json, sys
+import requests, json, sys, os
 from datetime import datetime
+sys.path.insert(0, os.path.dirname(__file__))
+from site_config import (
+    LAT, LON, SITE_NAME, SITE_SLUG, COUNTY, STATE, STATE_ABBR,
+    PARCEL_ID, OUTPUT_DIR, EXCEL_FILE, MAP_PREFIX,
+    PARCEL_DATA_FILE, TOWER_DATA_FILE, POWER_DATA_FILE,
+    SUPABASE_URL, SUPABASE_KEY,
+    ensure_output_dirs, print_site_banner
+)
+print_site_banner()
 
 # Load secrets
 SECRETS_PATH = "/home/ubuntu/skills/scip-florida/references/.secrets"
@@ -47,9 +56,9 @@ def upsert(table, record, conflict_col=None):
         return None
 
 # Load data
-with open('/home/ubuntu/scip-output/golden_hour/parcel_data.json') as f:
+with open(PARCEL_DATA_FILE) as f:
     parcel_data = json.load(f)
-with open('/home/ubuntu/scip-output/golden_hour/tower_data.json') as f:
+with open(TOWER_DATA_FILE) as f:
     tower_data = json.load(f)
 
 features = parcel_data.get('regrid_point', {}).get('parcels', {}).get('features', [])
@@ -65,16 +74,16 @@ except:
 # ── 1. Upsert SITE record ─────────────────────────────────────────────────────
 print("\n1. Upserting site record...")
 site_record = {
-    "site_name": "Golden Hour",
+    "site_name": SITE_NAME,
     "site_id": "GOLDEN-HOUR-FL-001",
     "state": "FL",
     "county": "Brevard",
     "municipality": "City of Cocoa",
-    "latitude": 28.384348,
-    "longitude": -80.792657,
-    "geom": json.dumps({"type": "Point", "coordinates": [-80.792657, 28.384348]}),
-    "search_ring_lat": 28.384348,
-    "search_ring_lng": -80.792657,
+    "latitude": LAT,
+    "longitude": LON,
+    "geom": json.dumps({"type": "Point", "coordinates": [LON, LAT]}),
+    "search_ring_lat": LAT,
+    "search_ring_lng": LON,
     "search_ring_radius_ft": 2640,
 }
 site_result = upsert("sites", site_record)
@@ -117,8 +126,8 @@ parcel_record = {
         "zoning": "C-G",
         "zoning_description": "General Commercial",
         "usecode": "010",
-        "lat": 28.384348,
-        "lon": -80.792657,
+        "lat": LAT,
+        "lon": LON,
         "fema_risk_factor": "Relatively Moderate",
         "alt_parcelnumb1": "2407074",
         "book": "10084",
@@ -135,15 +144,15 @@ print("\n3. Upserting SCIP document record...")
 doc_record = {
     "site_id": site_uuid,
     "version": 1,
-    "file_url": "/home/ubuntu/scip-output/golden_hour/GoldenHour_SCIP_Package.xlsx",
-    "file_name": "GoldenHour_SCIP_Package.xlsx",
+    "file_url": EXCEL_FILE,
+    "file_name": os.path.basename(EXCEL_FILE),
     "maps_included": True,
     "compliance_complete": True,
     "zoning_complete": True,
     "property_data_complete": True,
     "generated_by": "skywave_ai",
     "notes": (
-        "Complete SCIP package for Golden Hour (28.384348, -80.792657). "
+        "Complete SCIP package for Golden Hour (LAT, LON). "
         "11 maps embedded. Both tabs populated. "
         "Parcel: 24 3523-00-11 | Owner: Allegra At Cocoa LLC | "
         "42.05 acres C-G zoning | Special Exception required. "
@@ -163,7 +172,7 @@ print(f"  zoning_ordinances sample: {r_check.text[:400]}")
 
 zoning_record = {
     "site_id": site_uuid,
-    "jurisdiction": "City of Cocoa, FL",
+    "jurisdiction": f"{COUNTY}, {STATE_ABBR}",
     "zoning_code": "C-G",
     "zoning_description": "General Commercial District",
     "ldc_reference": "Appendix A, Art. XIII, Sec. 27",
@@ -189,7 +198,7 @@ else:
     # Try minimal record
     minimal_zon = {
         "site_id": site_uuid,
-        "jurisdiction": "City of Cocoa, FL",
+        "jurisdiction": f"{COUNTY}, {STATE_ABBR}",
         "zoning_code": "C-G",
         "zoning_description": "General Commercial District",
         "ldc_reference": "Appendix A, Art. XIII, Sec. 27",
@@ -244,4 +253,4 @@ print(f"  ✅ Inserted {towers_inserted} tower records")
 
 print("\n✅ Supabase push complete!")
 print(f"   Site UUID: {site_uuid}")
-print(f"   Site: Golden Hour | Cocoa, FL | 28.384348, -80.792657")
+print(f"   Site: Golden Hour | Cocoa, FL | LAT, LON")

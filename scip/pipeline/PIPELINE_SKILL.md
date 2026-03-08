@@ -118,3 +118,62 @@ Key tables in the SkyWave Supabase project:
 `/home/ubuntu/skills/scip-florida-v2/references/.secrets`
 
 Required keys: `REGRID_API_TOKEN`, `APIFY_API_TOKEN`, `MAPBOX_ACCESS_TOKEN`, `OPENCELLID_API_KEY`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `GOOGLE_MAPS_API_KEY`, `NREL_API_KEY`
+
+---
+
+## CONUS-Ready Refactor (March 2026)
+
+The pipeline is now fully parameterized for **any site in the contiguous United States**.
+All site-specific values are centralized in `site_config.py`.
+
+### How to Run for a New Site
+
+1. **Edit `site_config.py`** — update the SITE PARAMETERS block at the top:
+   ```python
+   LAT           = 42.9634
+   LON           = -85.6681
+   SITE_NAME     = "Grand Rapids North"
+   SITE_SLUG     = "grand_rapids_north"
+   COUNTY        = "Kent County"
+   STATE         = "Michigan"
+   STATE_ABBR    = "MI"
+   PARCEL_ID     = "41-14-07-200-001"
+   ```
+2. **Run scripts in order** (01 → 04b → 04 → 03 → 05 → 06 → 07):
+   ```bash
+   cd scip/pipeline
+   python3 01_collect_parcel_data.py
+   python3 04b_query_power_lines.py
+   python3 04_query_towers.py
+   python3 03_generate_maps.py
+   python3 05_build_excel.py
+   python3 06_embed_maps.py
+   python3 07_push_supabase.py
+   ```
+3. **Output** is written to `/home/ubuntu/scip-output/{SITE_SLUG}/`
+
+### National Data Sources (all CONUS)
+
+| Data Type | Source | Coverage |
+|---|---|---|
+| Parcel data | Regrid `/api/v1/parcel/point` | All 50 states |
+| County/state/FIPS | FCC Census Block API | National |
+| Reverse geocode | Nominatim (OSM) | National (free) |
+| Transmission lines | HIFLD/EIA ArcGIS REST | National |
+| Distribution lines | OpenStreetMap Overpass | National |
+| Utility service territory | EIA ArcGIS REST | National |
+| Cell towers | OpenCellID | National |
+| Flood zones | FEMA NFHL WMS | National |
+| Wetlands | USFWS NWI WMS | National |
+| Maps (aerial, topo, etc.) | Mapbox Static API | National |
+| Wind speed | NREL Wind Toolkit | National |
+| Zoning | Municode + ZoningPoint | National |
+
+### New Script: 04b_query_power_lines.py
+
+Dedicated power infrastructure script that:
+- Queries HIFLD/EIA national transmission line dataset
+- Queries OpenStreetMap for distribution lines and substations
+- Queries EIA utility service territory to identify the local utility
+- Outputs a ready-to-paste SCIP Row 73 (Power Provider) summary
+- Saves to `power_data.json` in the site output directory

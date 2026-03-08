@@ -9,27 +9,34 @@ from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from PIL import Image as PILImage
-import os, io
+import os, io, sys
+sys.path.insert(0, os.path.dirname(__file__))
+from site_config import (
+    SITE_NAME, SITE_SLUG, OUTPUT_DIR, MAPS_DIR, EXCEL_FILE, MAP_PREFIX,
+    ensure_output_dirs, print_site_banner
+)
+ensure_output_dirs()
+print_site_banner()
 
-MAPS_DIR = "/home/ubuntu/scip-output/golden_hour/maps"
-EXCEL_FILE = "/home/ubuntu/scip-output/golden_hour/GoldenHour_SCIP_Package.xlsx"
+# MAPS_DIR from site_config
+EXCEL_FILE = EXCEL_FILE  # from site_config
 
 wb = load_workbook(EXCEL_FILE)
 ws = wb['Candidate']
 
 # Map definitions: (label, filename, row_to_insert_after)
 MAPS = [
-    ("Map 01 — Aerial View", "GoldenHour_01_aerial.png"),
-    ("Map 02 — Topography", "GoldenHour_02_topography.png"),
-    ("Map 03 — FEMA Floodplain", "GoldenHour_03_floodplain.png"),
-    ("Map 04 — Zoning", "GoldenHour_04_zoning.png"),
-    ("Map 05 — Future Land Use", "GoldenHour_05_flu.png"),
-    ("Map 06 — USFWS Wetlands", "GoldenHour_06_wetlands.png"),
-    ("Map 07 — Airport Proximity", "GoldenHour_07_airport.png"),
-    ("Map 08 — Cell Towers", "GoldenHour_08_cell_towers.png"),
-    ("Map 09 — Parcel Map", "GoldenHour_09_parcel.png"),
+    ("Map 01 — Aerial View", f"{MAP_PREFIX}_01_aerial.png"),
+    ("Map 02 — Topography", f"{MAP_PREFIX}_02_topography.png"),
+    ("Map 03 — FEMA Floodplain", f"{MAP_PREFIX}_03_floodplain.png"),
+    ("Map 04 — Zoning", f"{MAP_PREFIX}_04_zoning.png"),
+    ("Map 05 — Future Land Use", f"{MAP_PREFIX}_05_flu.png"),
+    ("Map 06 — USFWS Wetlands", f"{MAP_PREFIX}_06_wetlands.png"),
+    ("Map 07 — Airport Proximity", f"{MAP_PREFIX}_07_airport.png"),
+    ("Map 08 — Cell Towers", f"{MAP_PREFIX}_08_cell_towers.png"),
+    ("Map 09 — Parcel Map", f"{MAP_PREFIX}_09_parcel.png"),
     ("Map 10 — Wind Speed", "GoldenHour_10_wind_speed.png"),
-    ("Map 11 — Search Ring", "GoldenHour_11_search_ring.png"),
+    ("Map 11 — Search Ring", f"{MAP_PREFIX}_11_search_ring.png"),
 ]
 
 # Create a new "Maps" sheet
@@ -123,17 +130,17 @@ for i, (label, filename) in enumerate(MAPS, 1):
 # Also embed maps inline in the Candidate sheet at the map rows
 print("\nEmbedding thumbnail maps in Candidate sheet...")
 map_row_mapping = {
-    86: "GoldenHour_01_aerial.png",
-    87: "GoldenHour_02_topography.png",
-    88: "GoldenHour_03_floodplain.png",
-    89: "GoldenHour_04_zoning.png",
-    90: "GoldenHour_05_flu.png",
-    91: "GoldenHour_06_wetlands.png",
-    92: "GoldenHour_07_airport.png",
-    93: "GoldenHour_08_cell_towers.png",
-    94: "GoldenHour_09_parcel.png",
+    86: f"{MAP_PREFIX}_01_aerial.png",
+    87: f"{MAP_PREFIX}_02_topography.png",
+    88: f"{MAP_PREFIX}_03_floodplain.png",
+    89: f"{MAP_PREFIX}_04_zoning.png",
+    90: f"{MAP_PREFIX}_05_flu.png",
+    91: f"{MAP_PREFIX}_06_wetlands.png",
+    92: f"{MAP_PREFIX}_07_airport.png",
+    93: f"{MAP_PREFIX}_08_cell_towers.png",
+    94: f"{MAP_PREFIX}_09_parcel.png",
     95: "GoldenHour_10_wind_speed.png",
-    96: "GoldenHour_11_search_ring.png",
+    96: f"{MAP_PREFIX}_11_search_ring.png",
 }
 
 for row_num, filename in map_row_mapping.items():

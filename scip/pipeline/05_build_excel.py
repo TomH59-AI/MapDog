@@ -7,6 +7,19 @@ Populates all fields with real data from Regrid, Municode, OpenCellID, and other
 
 import openpyxl
 from openpyxl import load_workbook
+import os, sys
+sys.path.insert(0, os.path.dirname(__file__))
+from site_config import (
+    LAT, LON, SITE_NAME, SITE_SLUG, COUNTY, STATE, STATE_ABBR,
+    PARCEL_ID, OUTPUT_DIR, MAPS_DIR, EXCEL_FILE, MAP_PREFIX,
+    PARCEL_DATA_FILE, TOWER_DATA_FILE, POWER_DATA_FILE,
+    AGENT_NAME, AGENT_PHONE, AGENT_EMAIL, CLIENT_NAME,
+    SEARCH_RADIUS_MI, SARF_HEIGHT_FT, TOWER_TYPE,
+    AIRPORT_NAME, AIRPORT_CODE, AIRPORT_DIST_MI, AIRPORT_BEARING,
+    ensure_output_dirs, print_site_banner
+)
+ensure_output_dirs()
+print_site_banner()
 from openpyxl.styles import (
     PatternFill, Font, Alignment, Border, Side, GradientFill
 )
@@ -16,18 +29,18 @@ from datetime import datetime
 import json, os, shutil
 
 # ── Load source data ──────────────────────────────────────────────────────────
-with open('/home/ubuntu/scip-output/golden_hour/parcel_data.json') as f:
+with open(PARCEL_DATA_FILE) as f:
     parcel_data = json.load(f)
 
-with open('/home/ubuntu/scip-output/golden_hour/tower_data.json') as f:
+with open(TOWER_DATA_FILE) as f:
     tower_data = json.load(f)
 
 # Extract parcel fields
 features = parcel_data.get('regrid_point', {}).get('parcels', {}).get('features', [])
 fields = features[0]['properties']['fields'] if features else {}
 
-MAPS_DIR = "/home/ubuntu/scip-output/golden_hour/maps"
-OUT_FILE = "/home/ubuntu/scip-output/golden_hour/GoldenHour_SCIP_Package.xlsx"
+# MAPS_DIR loaded from site_config
+OUT_FILE = EXCEL_FILE
 
 # ── Load template ─────────────────────────────────────────────────────────────
 wb = load_workbook('/home/ubuntu/upload/ExampleBlankSCIPPackage.xlsx')
