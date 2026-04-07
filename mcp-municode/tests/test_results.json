@@ -1,0 +1,212 @@
+[
+  {
+    "jurisdiction": "Cocoa",
+    "state": "FL",
+    "status": "success_partial",
+    "municode_url": "https://library.municode.com/fl/cocoa/codes/code_of_ordinances",
+    "sections_found": 3,
+    "text_length": 906570,
+    "error": null,
+    "extracted_summary": {
+      "height_limit_ft": null,
+      "setback_ft": null,
+      "fall_zone_ft": null,
+      "permit_type": "Site Plan Approval",
+      "public_hearing_required": true,
+      "zoning_classifications": null,
+      "collocation_required": false,
+      "stealth_required": false,
+      "contact_department": "Community Development Department",
+      "summary": "In Cocoa, FL, construction of telecommunications towers requires site plan approval. Structures over 50 feet trigger a more rigorous review involving the Planning and Zoning Board and possibly City Council, including public hearings. Conditional approvals require compliance within 90 days. The ordinance does not specify tower height limits, setbacks, or fall zone requirements. Applicants must submit detailed site plans and comply with all city codes."
+    }
+  },
+  {
+    "jurisdiction": "Gainesville",
+    "state": "FL",
+    "status": "error",
+    "municode_url": "https://library.municode.com/fl/gainesville/codes/code_of_ordinances",
+    "sections_found": 1,
+    "text_length": 337490,
+    "error": "Client error '409 Conflict' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/telecom_ordinances?id=eq.c90f6834-6ded-439e-94f7-39adea7ae121'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/409",
+    "extracted_summary": {
+      "height_limit_ft": null,
+      "setback_ft": null,
+      "fall_zone_ft": null,
+      "permit_type": null,
+      "public_hearing_required": false,
+      "zoning_classifications": null,
+      "collocation_required": false,
+      "stealth_required": false,
+      "contact_department": null,
+      "summary": "The provided ordinance text for Gainesville, FL does not include specific regulations or standards for telecommunications towers or antennas. No height limits, setback requirements, permit types, or zoning districts for such facilities are mentioned. Therefore, site acquisition specialists should consult additional local codes or contact the city's planning department directly for telecommunications-specific regulations."
+    }
+  },
+  {
+    "jurisdiction": "Atlanta",
+    "state": "GA",
+    "status": "success_partial",
+    "municode_url": "https://library.municode.com/ga/atlanta/codes/code_of_ordinances",
+    "sections_found": 3,
+    "text_length": 445382,
+    "error": null,
+    "extracted_summary": {
+      "height_limit_ft": null,
+      "setback_ft": null,
+      "fall_zone_ft": null,
+      "permit_type": null,
+      "public_hearing_required": false,
+      "zoning_classifications": null,
+      "collocation_required": false,
+      "stealth_required": false,
+      "contact_department": null,
+      "summary": "The provided ordinance text for Atlanta, GA, does not specify telecommunications tower regulations such as height limits, setbacks, permit types, or zoning classifications. General zoning and yard requirements are detailed, but no explicit provisions for wireless telecommunications facilities are included in the excerpt. Additional sections or ordinances should be consulted for specific telecommunications tower regulations."
+    }
+  },
+  {
+    "jurisdiction": "Austin",
+    "state": "TX",
+    "status": "success_partial",
+    "municode_url": "https://library.municode.com/tx/austin/codes/code_of_ordinances",
+    "sections_found": 3,
+    "text_length": 890042,
+    "error": null,
+    "extracted_summary": {
+      "height_limit_ft": null,
+      "setback_ft": null,
+      "fall_zone_ft": null,
+      "permit_type": null,
+      "public_hearing_required": false,
+      "zoning_classifications": null,
+      "collocation_required": false,
+      "stealth_required": false,
+      "contact_department": null,
+      "summary": "The provided ordinance text for Austin, TX does not contain specific regulations or requirements related to telecommunications towers or antennas. No information on height limits, setbacks, permit types, or other telecommunications-specific provisions is included in the excerpt."
+    }
+  },
+  {
+    "jurisdiction": "Charlotte",
+    "state": "NC",
+    "status": "not_found",
+    "municode_url": "https://library.municode.com/nc/charlotte/codes/code_of_ordinances",
+    "sections_found": 0,
+    "text_length": 0,
+    "error": "No telecommunications sections found in search",
+    "extracted_summary": {
+      "height_limit_ft": null,
+      "setback_ft": null,
+      "fall_zone_ft": null,
+      "permit_type": null,
+      "public_hearing_required": null,
+      "zoning_classifications": null,
+      "collocation_required": null,
+      "stealth_required": null,
+      "contact_department": null,
+      "summary": null
+    }
+  },
+  {
+    "jurisdiction": "Nashville-Davidson County",
+    "state": "TN",
+    "status": "not_found",
+    "municode_url": null,
+    "sections_found": 0,
+    "text_length": 0,
+    "error": "Municipality 'Nashville-Davidson County' not found on Municode",
+    "extracted_summary": {
+      "height_limit_ft": null,
+      "setback_ft": null,
+      "fall_zone_ft": null,
+      "permit_type": null,
+      "public_hearing_required": null,
+      "zoning_classifications": null,
+      "collocation_required": null,
+      "stealth_required": null,
+      "contact_department": null,
+      "summary": null
+    }
+  },
+  {
+    "jurisdiction": "Birmingham",
+    "state": "AL",
+    "status": "success_partial",
+    "municode_url": "https://library.municode.com/al/birmingham/codes/code_of_ordinances",
+    "sections_found": 2,
+    "text_length": 1386122,
+    "error": null,
+    "extracted_summary": {
+      "height_limit_ft": null,
+      "setback_ft": null,
+      "fall_zone_ft": null,
+      "permit_type": null,
+      "public_hearing_required": false,
+      "zoning_classifications": null,
+      "collocation_required": false,
+      "stealth_required": false,
+      "contact_department": null,
+      "summary": "The provided ordinance text for Birmingham, AL does not include specific regulations or requirements for telecommunications towers or antennas. The text primarily covers residential zoning districts and their general use and dimensional regulations without addressing wireless communications facilities in detail."
+    }
+  },
+  {
+    "jurisdiction": "Columbus",
+    "state": "OH",
+    "status": "error",
+    "municode_url": "https://library.municode.com/oh/columbus/codes/code_of_ordinances",
+    "sections_found": 3,
+    "text_length": 237296,
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/telecom_ordinances'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400",
+    "extracted_summary": {
+      "height_limit_ft": null,
+      "setback_ft": null,
+      "fall_zone_ft": null,
+      "permit_type": "Certificate of Zoning Clearance with special permit required in certain historic or architectural review areas (Section 3357.015(A))",
+      "public_hearing_required": false,
+      "zoning_classifications": "C-5 commercial district",
+      "collocation_required": true,
+      "stealth_required": true,
+      "contact_department": "Director (implied Planning or Zoning Director) (Section 3357.015(B)(1))",
+      "summary": "Monopole telecommunication antennas are permitted by certificate of zoning clearance in the C-5 commercial district, except on historic or architectural review properties where a special permit is required. Antennas must be set back 200% of their height from residential zones, be neutral grey, and allow collocation. Maximum height is 100 feet for single provider monopoles and 150 feet for multiple providers. Affidavits demonstrating no reasonable alternatives and willingness to lease space for collocation must be submitted."
+    }
+  },
+  {
+    "jurisdiction": "Detroit",
+    "state": "MI",
+    "status": "error",
+    "municode_url": "https://library.municode.com/mi/detroit/codes/code_of_ordinances",
+    "sections_found": 3,
+    "text_length": 4221287,
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/telecom_ordinances?id=eq.71e5d7ef-4a37-466c-8458-cf018495c1f1'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400",
+    "extracted_summary": {
+      "height_limit_ft": null,
+      "setback_ft": null,
+      "fall_zone_ft": null,
+      "permit_type": "Conditional Use Permit",
+      "public_hearing_required": true,
+      "zoning_classifications": "M4, M5",
+      "collocation_required": null,
+      "stealth_required": null,
+      "contact_department": "Buildings, Safety Engineering, and Environmental Department",
+      "summary": "In Detroit, telecommunications towers are conditionally permitted primarily in the M4 and M5 industrial zoning districts, requiring a Conditional Use Permit reviewed by the Planning Commission with a public hearing. Specific height limits, setbacks, and fall zone requirements are not detailed in the provided text and should be confirmed with the Buildings, Safety Engineering, and Environmental Department. Compliance with all other applicable regulations and obtaining necessary licenses from other agencies is required."
+    }
+  },
+  {
+    "jurisdiction": "Pittsburgh",
+    "state": "PA",
+    "status": "not_found",
+    "municode_url": null,
+    "sections_found": 0,
+    "text_length": 0,
+    "error": "Municipality 'Pittsburgh' not found on Municode",
+    "extracted_summary": {
+      "height_limit_ft": null,
+      "setback_ft": null,
+      "fall_zone_ft": null,
+      "permit_type": null,
+      "public_hearing_required": null,
+      "zoning_classifications": null,
+      "collocation_required": null,
+      "stealth_required": null,
+      "contact_department": null,
+      "summary": null
+    }
+  }
+]

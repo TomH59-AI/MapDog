@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "municode": {
+      "command": "python3",
+      "args": ["-m", "src.server"],
+      "cwd": "./mcp-municode",
+      "env": {
+        "SUPABASE_URL": "https://skpxeouvikzgsaurkohf.supabase.co",
+        "SUPABASE_SERVICE_KEY": "${SUPABASE_SERVICE_KEY}",
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+      }
+    }
+  }
+}

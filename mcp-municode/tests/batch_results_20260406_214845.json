@@ -1,0 +1,247 @@
+[
+  {
+    "jurisdiction_id": 2,
+    "jurisdiction": "Autauga County",
+    "state": "AL",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.2'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 3,
+    "jurisdiction": "Baldwin County",
+    "state": "AL",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.3'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 2214,
+    "jurisdiction": "Aleutians East Borough",
+    "state": "AK",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.2214'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 687,
+    "jurisdiction": "Aleutians West Census Area",
+    "state": "AK",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.687'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 2734,
+    "jurisdiction": "Apache County",
+    "state": "AZ",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.2734'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 2735,
+    "jurisdiction": "Cochise County",
+    "state": "AZ",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.2735'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 2191,
+    "jurisdiction": "Arkansas County",
+    "state": "AR",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.2191'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 448,
+    "jurisdiction": "Ashley County",
+    "state": "AR",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.448'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 228,
+    "jurisdiction": "Alameda County",
+    "state": "CA",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.228'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 229,
+    "jurisdiction": "Alpine County",
+    "state": "CA",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.229'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 2224,
+    "jurisdiction": "Adams County",
+    "state": "CO",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.2224'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 707,
+    "jurisdiction": "Alamosa County",
+    "state": "CO",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.707'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 2211,
+    "jurisdiction": "Fairfield County",
+    "state": "CT",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.2211'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 681,
+    "jurisdiction": "Hartford County",
+    "state": "CT",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.681'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 2240,
+    "jurisdiction": "Kent County",
+    "state": "DE",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.2240'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 871,
+    "jurisdiction": "New Castle County",
+    "state": "DE",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.871'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 686,
+    "jurisdiction": "District of Columbia",
+    "state": "DC",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.686'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 161,
+    "jurisdiction": "Duval County",
+    "state": "FL",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.161'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 748,
+    "jurisdiction": "Escambia County",
+    "state": "FL",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.748'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 1033,
+    "jurisdiction": "Appling County",
+    "state": "GA",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.1033'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 1034,
+    "jurisdiction": "Atkinson County",
+    "state": "GA",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.1034'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 1382,
+    "jurisdiction": "Hawaii County",
+    "state": "HI",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.1382'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 1383,
+    "jurisdiction": "Honolulu County",
+    "state": "HI",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.1383'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 1387,
+    "jurisdiction": "Ada County",
+    "state": "ID",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.1387'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 1388,
+    "jurisdiction": "Adams County",
+    "state": "ID",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.1388'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 2648,
+    "jurisdiction": "Adams County",
+    "state": "IL",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.2648'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 1422,
+    "jurisdiction": "Alexander County",
+    "state": "IL",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.1422'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 1718,
+    "jurisdiction": "Adams County",
+    "state": "IN",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.1718'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 621,
+    "jurisdiction": "Allen County",
+    "state": "IN",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.621'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 2678,
+    "jurisdiction": "Adair County",
+    "state": "IA",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.2678'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 1846,
+    "jurisdiction": "Adams County",
+    "state": "IA",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.1846'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 2749,
+    "jurisdiction": "Allen County",
+    "state": "KS",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.2749'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 2750,
+    "jurisdiction": "Anderson County",
+    "state": "KS",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.2750'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 3057,
+    "jurisdiction": "Adair County",
+    "state": "KY",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.3057'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  },
+  {
+    "jurisdiction_id": 3046,
+    "jurisdiction": "Allen County",
+    "state": "KY",
+    "status": "error",
+    "error": "Client error '400 Bad Request' for url 'https://skpxeouvikzgsaurkohf.supabase.co/rest/v1/national_jurisdictions?id=eq.3046'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+  }
+]
