@@ -20,6 +20,10 @@ node_modules/
 .env.production
 .dev.vars
 
+# API keys config (use config.example.js as template)
+public/static/config.js
+*.secrets
+
 # logs
 logs/
 *.log

@@ -1,0 +1,17 @@
+{
+  "name": "SkyWave Intel — Site Selection Platform",
+  "short_name": "SkyWave Intel",
+  "description": "Professional site acquisition intelligence for wireless industry specialists",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B1120",
+  "theme_color": "#0B1120",
+  "icons": [
+    {
+      "src": "https://d2xsxph8kpxj0f.cloudfront.net/87610715/NPGBkWnUUSSKqFn2FdfTCY/skywave-icon-23f8tqukDgdyLXLqqtL5D4.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

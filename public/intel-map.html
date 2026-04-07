@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MapDog Intel Map — Site Selection</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.css" rel="stylesheet">
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="/static/config.js"></script>
+  <style>
+    /* ── Reset & Base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0a0e17; color: #e2e8f0; overflow: hidden; height: 100vh; }
+
+    /* ── Map Container ────────────────────────────────────────── */
+    #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+
+    /* ── Top Bar ──────────────────────────────────────────────── */
+    .top-bar {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+      background: linear-gradient(180deg, rgba(10,14,23,0.95) 0%, rgba(10,14,23,0.7) 80%, transparent 100%);
+      padding: 12px 20px 24px;
+      display: flex; align-items: center; gap: 16px;
+      pointer-events: none;
+    }
+    .top-bar > * { pointer-events: auto; }
+
+    .logo {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 20px; font-weight: 800; letter-spacing: -0.5px;
+      color: #f59e0b; white-space: nowrap;
+      text-shadow: 0 2px 8px rgba(245,158,11,0.3);
+    }
+    .logo i { font-size: 22px; }
+    .logo span { color: #94a3b8; font-weight: 400; font-size: 13px; margin-left: 4px; }
+
+    /* ── Coordinate Input Bar ─────────────────────────────────── */
+    .coord-bar {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(15,23,42,0.9); border: 1px solid rgba(148,163,184,0.2);
+      border-radius: 12px; padding: 6px 8px;
+      backdrop-filter: blur(20px);
+      flex: 1; max-width: 720px;
+    }
+    .coord-bar input {
+      background: rgba(30,41,59,0.8); border: 1px solid rgba(71,85,105,0.4);
+      border-radius: 8px; padding: 8px 12px; color: #e2e8f0;
+      font-family: 'JetBrains Mono', monospace; font-size: 13px;
+      outline: none; transition: all 0.2s;
+    }
+    .coord-bar input:focus { border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,0.2); }
+    .coord-bar input::placeholder { color: #64748b; }
+    .coord-bar .input-lat { width: 140px; }
+    .coord-bar .input-lon { width: 150px; }
+    .coord-bar .input-radius { width: 80px; }
+    .coord-bar select {
+      background: rgba(30,41,59,0.8); border: 1px solid rgba(71,85,105,0.4);
+      border-radius: 8px; padding: 8px 6px; color: #e2e8f0;
+      font-family: 'Inter', sans-serif; font-size: 12px; outline: none; cursor: pointer;
+    }
+    .coord-bar select:focus { border-color: #f59e0b; }
+
+    .btn-fly {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      border: none; border-radius: 8px; padding: 8px 16px;
+      color: #0a0e17; font-weight: 700; font-size: 13px;
+      cursor: pointer; transition: all 0.2s; white-space: nowrap;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-fly:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,158,11,0.4); }
+    .btn-fly:active { transform: translateY(0); }
+
+    .btn-clear {
+      background: transparent; border: 1px solid rgba(148,163,184,0.3);
+      border-radius: 8px; padding: 8px 10px; color: #94a3b8;
+      cursor: pointer; transition: all 0.2s; font-size: 12px;
+    }
+    .btn-clear:hover { border-color: #ef4444; color: #ef4444; }
+
+    /* ── Features Panel ───────────────────────────────────────── */
+    .features-toggle {
+      position: absolute; top: 70px; right: 16px; z-index: 10;
+    }
+    .btn-features {
+      background: rgba(15,23,42,0.9); border: 1px solid rgba(148,163,184,0.25);
+      border-radius: 12px; padding: 10px 16px; color: #e2e8f0;
+      cursor: pointer; transition: all 0.2s; font-size: 13px; font-weight: 600;
+      display: flex; align-items: center; gap: 8px;
+      backdrop-filter: blur(20px);
+    }
+    .btn-features:hover { border-color: #f59e0b; color: #f59e0b; }
+    .btn-features.active { border-color: #f59e0b; color: #f59e0b; background: rgba(245,158,11,0.1); }
+    .btn-features i { font-size: 15px; }
+
+    .features-panel {
+      position: absolute; top: 116px; right: 16px; z-index: 10;
+      background: rgba(15,23,42,0.95); border: 1px solid rgba(148,163,184,0.15);
+      border-radius: 16px; padding: 0; width: 320px;
+      backdrop-filter: blur(24px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      transform: translateX(360px); opacity: 0;
+      transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), opacity 0.25s ease;
+      max-height: calc(100vh - 140px); overflow-y: auto;
+    }
+    .features-panel.open { transform: translateX(0); opacity: 1; }
+
+    .features-panel::-webkit-scrollbar { width: 6px; }
+    .features-panel::-webkit-scrollbar-track { background: transparent; }
+    .features-panel::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.2); border-radius: 3px; }
+
+    .panel-header {
+      padding: 16px 20px 12px; border-bottom: 1px solid rgba(148,163,184,0.1);
+      display: flex; justify-content: space-between; align-items: center;
+      position: sticky; top: 0; background: rgba(15,23,42,0.98); z-index: 1;
+      border-radius: 16px 16px 0 0;
+    }
+    .panel-header h3 { font-size: 14px; font-weight: 700; color: #f59e0b; letter-spacing: 0.5px; text-transform: uppercase; }
+
+    .layer-section {
+      padding: 12px 20px; border-bottom: 1px solid rgba(148,163,184,0.06);
+    }
+    .layer-section:last-child { border-bottom: none; }
+    .section-title {
+      font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;
+      letter-spacing: 1.2px; margin-bottom: 10px;
+    }
+
+    .layer-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0; gap: 10px;
+    }
+    .layer-item-left {
+      display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
+    }
+    .layer-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+      box-shadow: 0 0 6px currentColor;
+    }
+    .layer-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Toggle Switch */
+    .toggle-switch {
+      position: relative; width: 36px; height: 20px; flex-shrink: 0;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(71,85,105,0.5); border-radius: 20px; transition: 0.3s;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute; height: 16px; width: 16px;
+      left: 2px; bottom: 2px; background: #94a3b8;
+      border-radius: 50%; transition: 0.3s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: rgba(245,158,11,0.4); }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); background: #f59e0b; }
+
+    /* Opacity Slider */
+    .opacity-row { padding: 2px 0 6px 20px; }
+    .opacity-slider {
+      -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+      background: rgba(71,85,105,0.4); border-radius: 2px; outline: none;
+      cursor: pointer;
+    }
+    .opacity-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 14px; height: 14px;
+      border-radius: 50%; background: #f59e0b; cursor: pointer;
+      box-shadow: 0 0 6px rgba(245,158,11,0.4);
+    }
+
+    /* ── Info Panel (bottom-left) ─────────────────────────────── */
+    .info-panel {
+      position: absolute; bottom: 30px; left: 16px; z-index: 10;
+      background: rgba(15,23,42,0.9); border: 1px solid rgba(148,163,184,0.15);
+      border-radius: 12px; padding: 14px 18px;
+      backdrop-filter: blur(20px); min-width: 260px;
+      transition: all 0.3s ease;
+    }
+    .info-panel.hidden { transform: translateY(120%); opacity: 0; pointer-events: none; }
+    .info-label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    .info-value { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #e2e8f0; }
+    .info-row { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+    .info-row span:first-child { color: #94a3b8; font-size: 11px; }
+    .info-row span:last-child { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #f59e0b; }
+
+    /* ── Crosshair ────────────────────────────────────────────── */
+    .crosshair {
+      position: absolute; top: 50%; left: 50%; z-index: 5;
+      width: 24px; height: 24px; margin: -12px 0 0 -12px;
+      pointer-events: none; display: none;
+    }
+    .crosshair::before, .crosshair::after {
+      content: ''; position: absolute; background: #f59e0b;
+    }
+    .crosshair::before { top: 0; left: 50%; width: 2px; height: 100%; transform: translateX(-50%); }
+    .crosshair::after { top: 50%; left: 0; width: 100%; height: 2px; transform: translateY(-50%); }
+    .crosshair.visible { display: block; }
+
+    /* ── Style Switcher (bottom-right) ────────────────────────── */
+    .style-switcher {
+      position: absolute; bottom: 30px; right: 16px; z-index: 10;
+      display: flex; gap: 6px;
+    }
+    .style-btn {
+      background: rgba(15,23,42,0.9); border: 1px solid rgba(148,163,184,0.2);
+      border-radius: 8px; padding: 6px 12px; color: #94a3b8;
+      cursor: pointer; font-size: 11px; font-weight: 600;
+      transition: all 0.2s; backdrop-filter: blur(20px);
+    }
+    .style-btn:hover { border-color: #f59e0b; color: #f59e0b; }
+    .style-btn.active { border-color: #f59e0b; color: #f59e0b; background: rgba(245,158,11,0.1); }
+
+    /* ── Toast Notifications ──────────────────────────────────── */
+    .toast {
+      position: absolute; top: 80px; left: 50%; transform: translateX(-50%) translateY(-20px);
+      z-index: 100; background: rgba(15,23,42,0.95); border: 1px solid rgba(245,158,11,0.3);
+      border-radius: 10px; padding: 10px 20px; color: #f59e0b;
+      font-size: 13px; font-weight: 600; backdrop-filter: blur(20px);
+      opacity: 0; transition: all 0.3s ease; pointer-events: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── Popup Styles ─────────────────────────────────────────── */
+    .mapboxgl-popup-content {
+      background: rgba(15,23,42,0.95) !important; color: #e2e8f0 !important;
+      border: 1px solid rgba(148,163,184,0.2) !important; border-radius: 12px !important;
+      padding: 16px !important; font-family: 'Inter', sans-serif !important;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5) !important;
+      backdrop-filter: blur(20px) !important;
+    }
+    .mapboxgl-popup-tip { border-top-color: rgba(15,23,42,0.95) !important; }
+    .mapboxgl-popup-close-button { color: #94a3b8 !important; font-size: 18px !important; padding: 4px 8px !important; }
+    .mapboxgl-popup-close-button:hover { color: #f59e0b !important; }
+    .popup-title { font-size: 14px; font-weight: 700; color: #f59e0b; margin-bottom: 8px; }
+    .popup-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
+    .popup-row .label { color: #94a3b8; }
+    .popup-row .value { color: #e2e8f0; font-family: 'JetBrains Mono', monospace; font-weight: 500; }
+
+    /* ── Loading Overlay ──────────────────────────────────────── */
+    .loading-overlay {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 50;
+      background: rgba(10,14,23,0.85); display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      transition: opacity 0.5s; pointer-events: none;
+    }
+    .loading-overlay.hidden { opacity: 0; }
+    .loading-spinner {
+      width: 48px; height: 48px; border: 3px solid rgba(245,158,11,0.2);
+      border-top-color: #f59e0b; border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    .loading-text { margin-top: 16px; font-size: 14px; color: #94a3b8; font-weight: 500; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Responsive ───────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .coord-bar { flex-wrap: wrap; }
+      .coord-bar input, .coord-bar select { font-size: 12px; }
+      .coord-bar .input-lat, .coord-bar .input-lon { width: 110px; }
+      .coord-bar .input-radius { width: 60px; }
+      .features-panel { width: 280px; right: 8px; }
+      .logo span { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Initializing Intel Map...</div>
+  </div>
+
+  <!-- Map -->
+  <div id="map"></div>
+
+  <!-- Crosshair -->
+  <div class="crosshair" id="crosshair"></div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <div class="logo">
+      <i class="fas fa-dog"></i> MapDog
+      <span>Intel Map</span>
+    </div>
+    <div class="coord-bar">
+      <input type="text" id="inputLat" class="input-lat" placeholder="Latitude" autocomplete="off">
+      <input type="text" id="inputLon" class="input-lon" placeholder="Longitude" autocomplete="off">
+      <input type="number" id="inputRadius" class="input-radius" placeholder="Radius" value="0.5" min="0.1" max="10" step="0.1">
+      <select id="inputUnit">
+        <option value="miles">mi</option>
+        <option value="km">km</option>
+        <option value="feet">ft</option>
+      </select>
+      <button class="btn-fly" onclick="flyToCoords()" title="Fly to coordinates">
+        <i class="fas fa-location-crosshairs"></i> Go
+      </button>
+      <button class="btn-clear" onclick="clearAll()" title="Clear search ring and markers">
+        <i class="fas fa-xmark"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Features Toggle Button -->
+  <div class="features-toggle">
+    <button class="btn-features" id="btnFeatures" onclick="toggleFeaturesPanel()">
+      <i class="fas fa-layer-group"></i> Features
+    </button>
+  </div>
+
+  <!-- Features Panel -->
+  <div class="features-panel" id="featuresPanel">
+    <div class="panel-header">
+      <h3><i class="fas fa-layer-group" style="margin-right:6px;"></i> Map Layers</h3>
+      <button class="btn-clear" onclick="toggleFeaturesPanel()" style="padding:4px 8px;">
+        <i class="fas fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Base Imagery -->
+    <div class="layer-section">
+      <div class="section-title">Terrain & Relief</div>
+      <div class="layer-item">
+        <div class="layer-item-left">
+          <div class="layer-dot" style="color:#8b5cf6;background:#8b5cf6;"></div>
+          <span class="layer-name">USGS Hillshade</span>
+        </div>
+        <label class="toggle-switch"><input type="checkbox" id="tog-hillshade" onchange="toggleLayer('hillshade-layer', this.checked)"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="opacity-row" id="opacity-row-hillshade">
+        <input type="range" class="opacity-slider" id="op-hillshade" min="0" max="100" value="60" oninput="setOpacity('hillshade-layer', this.value)">
+      </div>
+
+      <div class="layer-item">
+        <div class="layer-item-left">
+          <div class="layer-dot" style="color:#06b6d4;background:#06b6d4;"></div>
+          <span class="layer-name">USGS Contours</span>
+        </div>
+        <label class="toggle-switch"><input type="checkbox" id="tog-contours" onchange="toggleLayer('contours-layer', this.checked)"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="opacity-row" id="opacity-row-contours">
+        <input type="range" class="opacity-slider" id="op-contours" min="0" max="100" value="80" oninput="setOpacity('contours-layer', this.value)">
+      </div>
+    </div>
+
+    <!-- Environmental -->
+    <div class="layer-section">
+      <div class="section-title">Environmental</div>
+      <div class="layer-item">
+        <div class="layer-item-left">
+          <div class="layer-dot" style="color:#10b981;background:#10b981;"></div>
+          <span class="layer-name">Wetlands (NWI)</span>
+        </div>
+        <label class="toggle-switch"><input type="checkbox" id="tog-wetlands" onchange="toggleLayer('wetlands-layer', this.checked)"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="opacity-row">
+        <input type="range" class="opacity-slider" id="op-wetlands" min="0" max="100" value="55" oninput="setOpacity('wetlands-layer', this.value)">
+      </div>
+
+      <div class="layer-item">
+        <div class="layer-item-left">
+          <div class="layer-dot" style="color:#22d3ee;background:#22d3ee;"></div>
+          <span class="layer-name">Wetlands Raster</span>
+        </div>
+        <label class="toggle-switch"><input type="checkbox" id="tog-wetlands-raster" onchange="toggleLayer('wetlands-raster-layer', this.checked)"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="opacity-row">
+        <input type="range" class="opacity-slider" id="op-wetlands-raster" min="0" max="100" value="55" oninput="setOpacity('wetlands-raster-layer', this.value)">
+      </div>
+
+      <div class="layer-item">
+        <div class="layer-item-left">
+          <div class="layer-dot" style="color:#3b82f6;background:#3b82f6;"></div>
+          <span class="layer-name">FEMA Flood Zones</span>
+        </div>
+        <label class="toggle-switch"><input type="checkbox" id="tog-flood" onchange="toggleLayer('flood-layer', this.checked)"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="opacity-row">
+        <input type="range" class="opacity-slider" id="op-flood" min="0" max="100" value="50" oninput="setOpacity('flood-layer', this.value)">
+      </div>
+    </div>
+
+    <!-- Infrastructure -->
+    <div class="layer-section">
+      <div class="section-title">Infrastructure</div>
+      <div class="layer-item">
+        <div class="layer-item-left">
+          <div class="layer-dot" style="color:#eab308;background:#eab308;"></div>
+          <span class="layer-name">Parcels (Regrid)</span>
+        </div>
+        <label class="toggle-switch"><input type="checkbox" id="tog-parcels" checked onchange="toggleLayer('parcel-layer', this.checked)"><span class="toggle-slider"></span></label>
+      </div>
+
+      <div class="layer-item">
+        <div class="layer-item-left">
+          <div class="layer-dot" style="color:#f97316;background:#f97316;"></div>
+          <span class="layer-name">Airports</span>
+        </div>
+        <label class="toggle-switch"><input type="checkbox" id="tog-airports" checked onchange="toggleAirports(this.checked)"><span class="toggle-slider"></span></label>
+      </div>
+
+      <div class="layer-item">
+        <div class="layer-item-left">
+          <div class="layer-dot" style="color:#ef4444;background:#ef4444;"></div>
+          <span class="layer-name">Cell Towers (FCC ASR)</span>
+        </div>
+        <label class="toggle-switch"><input type="checkbox" id="tog-towers" onchange="toggleLayer('towers-layer', this.checked)"><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+
+    <!-- Overlays -->
+    <div class="layer-section">
+      <div class="section-title">Overlays</div>
+      <div class="layer-item">
+        <div class="layer-item-left">
+          <div class="layer-dot" style="color:#a855f7;background:#a855f7;"></div>
+          <span class="layer-name">USGS Topo</span>
+        </div>
+        <label class="toggle-switch"><input type="checkbox" id="tog-topo" onchange="toggleLayer('topo-layer', this.checked)"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="opacity-row">
+        <input type="range" class="opacity-slider" id="op-topo" min="0" max="100" value="70" oninput="setOpacity('topo-layer', this.value)">
+      </div>
+
+      <div class="layer-item">
+        <div class="layer-item-left">
+          <div class="layer-dot" style="color:#ec4899;background:#ec4899;"></div>
+          <span class="layer-name">Search Ring</span>
+        </div>
+        <label class="toggle-switch"><input type="checkbox" id="tog-ring" checked onchange="toggleSearchRing(this.checked)"><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Info Panel (bottom-left) -->
+  <div class="info-panel hidden" id="infoPanel">
+    <div class="info-label">Site Intel</div>
+    <div class="info-value" id="infoCoords">—</div>
+    <div class="info-row"><span>Radius</span><span id="infoRadius">—</span></div>
+    <div class="info-row"><span>Zoom</span><span id="infoZoom">—</span></div>
+    <div class="info-row"><span>Elevation</span><span id="infoElev">—</span></div>
+  </div>
+
+  <!-- Style Switcher -->
+  <div class="style-switcher">
+    <button class="style-btn active" data-style="satellite-streets-v12" onclick="switchStyle(this)">Satellite</button>
+    <button class="style-btn" data-style="streets-v12" onclick="switchStyle(this)">Streets</button>
+    <button class="style-btn" data-style="dark-v11" onclick="switchStyle(this)">Dark</button>
+    <button class="style-btn" data-style="outdoors-v12" onclick="switchStyle(this)">Outdoors</button>
+  </div>
+
+  <script>
+    // ── Config ──────────────────────────────────────────────────
+    mapboxgl.accessToken = MAP_CONFIG.MAPBOX_TOKEN;
+
+    let map, searchRingSource, siteMarker, currentPopup;
+    let featuresOpen = false;
+    let currentStyle = 'satellite-streets-v12';
+    let layerStates = {};
+
+    // ── Initialize Map ──────────────────────────────────────────
+    map = new mapboxgl.Map({
+      container: 'map',
+      style: `mapbox://styles/mapbox/${currentStyle}`,
+      center: MAP_CONFIG.DEFAULT_CENTER,
+      zoom: MAP_CONFIG.DEFAULT_ZOOM,
+      pitch: 0,
+      bearing: 0,
+      attributionControl: false
+    });
+
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'top-right');
+    map.addControl(new mapboxgl.ScaleControl({ maxWidth: 200 }), 'bottom-left');
+    map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+
+    // ── Map Load ────────────────────────────────────────────────
+    map.on('load', () => {
+      addAllSources();
+      addAllLayers();
+      setupInteractions();
+
+      // Hide loading
+      setTimeout(() => {
+        document.getElementById('loadingOverlay').classList.add('hidden');
+      }, 800);
+    });
+
+    // ── Add Sources ─────────────────────────────────────────────
+    function addAllSources() {
+      // USGS Hillshade
+      map.addSource('usgs-hillshade', {
+        type: 'raster',
+        tiles: ['https://basemap.nationalmap.gov/arcgis/services/USGSShadedReliefOnly/MapServer/WMSServer?service=WMS&request=GetMap&version=1.3.0&layers=0&styles=&format=image/png&transparent=true&height=256&width=256&crs=EPSG:3857&bbox={bbox-epsg-3857}'],
+        tileSize: 256
+      });
+
+      // USGS Contours
+      map.addSource('usgs-contours', {
+        type: 'raster',
+        tiles: ['https://basemap.nationalmap.gov/arcgis/services/Contours/MapServer/WMSServer?service=WMS&request=GetMap&version=1.3.0&layers=0&styles=&format=image/png&transparent=true&height=256&width=256&crs=EPSG:3857&bbox={bbox-epsg-3857}'],
+        tileSize: 256
+      });
+
+      // USFWS Wetlands (NWI)
+      map.addSource('wetlands', {
+        type: 'raster',
+        tiles: ['https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/services/Wetlands/MapServer/WMSServer?service=WMS&request=GetMap&version=1.3.0&layers=0&styles=&format=image/png&transparent=true&height=256&width=256&crs=EPSG:3857&bbox={bbox-epsg-3857}'],
+        tileSize: 256
+      });
+
+      // USFWS Wetlands Raster
+      map.addSource('wetlands-raster', {
+        type: 'raster',
+        tiles: ['https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/services/Wetlands_Raster/MapServer/WMSServer?service=WMS&request=GetMap&version=1.3.0&layers=0&styles=&format=image/png&transparent=true&height=256&width=256&crs=EPSG:3857&bbox={bbox-epsg-3857}'],
+        tileSize: 256
+      });
+
+      // FEMA Flood Zones
+      map.addSource('fema-flood', {
+        type: 'raster',
+        tiles: ['https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image&layers=show:28'],
+        tileSize: 256
+      });
+
+      // USGS Topo
+      map.addSource('usgs-topo', {
+        type: 'raster',
+        tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256
+      });
+
+      // Parcels (Regrid)
+      map.addSource('parcels', {
+        type: 'vector',
+        tiles: [`https://tiles.regrid.com/v1/parcel/{z}/{x}/{y}.pbf?token=${MAP_CONFIG.REGRID_TOKEN}`]
+      });
+
+      // Airports (Mapbox Tileset)
+      map.addSource('airports', {
+        type: 'vector',
+        url: MAP_CONFIG.AIRPORTS_TILESET
+      });
+
+      // Search Ring (GeoJSON — starts empty)
+      map.addSource('search-ring', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+
+      // Site Marker (GeoJSON — starts empty)
+      map.addSource('site-marker', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+
+      // FCC Cell Towers (ArcGIS)
+      map.addSource('fcc-towers', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+    }
+
+    // ── Add Layers ──────────────────────────────────────────────
+    function addAllLayers() {
+      // Hillshade (off by default)
+      map.addLayer({
+        id: 'hillshade-layer', type: 'raster', source: 'usgs-hillshade',
+        paint: { 'raster-opacity': 0.6 },
+        layout: { visibility: 'none' }
+      });
+
+      // Contours (off by default)
+      map.addLayer({
+        id: 'contours-layer', type: 'raster', source: 'usgs-contours',
+        paint: { 'raster-opacity': 0.8 },
+        layout: { visibility: 'none' }
+      });
+
+      // Wetlands (off by default)
+      map.addLayer({
+        id: 'wetlands-layer', type: 'raster', source: 'wetlands',
+        paint: { 'raster-opacity': 0.55 },
+        layout: { visibility: 'none' }
+      });
+
+      // Wetlands Raster (off by default)
+      map.addLayer({
+        id: 'wetlands-raster-layer', type: 'raster', source: 'wetlands-raster',
+        paint: { 'raster-opacity': 0.55 },
+        layout: { visibility: 'none' }
+      });
+
+      // FEMA Flood (off by default)
+      map.addLayer({
+        id: 'flood-layer', type: 'raster', source: 'fema-flood',
+        paint: { 'raster-opacity': 0.5 },
+        layout: { visibility: 'none' }
+      });
+
+      // USGS Topo (off by default)
+      map.addLayer({
+        id: 'topo-layer', type: 'raster', source: 'usgs-topo',
+        paint: { 'raster-opacity': 0.7 },
+        layout: { visibility: 'none' }
+      });
+
+      // Parcels (on by default)
+      map.addLayer({
+        id: 'parcel-layer', type: 'line', source: 'parcels',
+        'source-layer': 'parcel',
+        paint: { 'line-color': '#eab308', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.3, 14, 1, 18, 2] },
+        layout: { visibility: 'visible' }
+      });
+
+      // Parcel fill (for click interaction)
+      map.addLayer({
+        id: 'parcel-fill', type: 'fill', source: 'parcels',
+        'source-layer': 'parcel',
+        paint: { 'fill-color': '#eab308', 'fill-opacity': 0 },
+        layout: { visibility: 'visible' }
+      });
+
+      // Airports - circles
+      map.addLayer({
+        id: 'airports-circles', type: 'circle', source: 'airports',
+        'source-layer': MAP_CONFIG.AIRPORTS_SOURCE_LAYER,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 2, 6, 4, 10, 8, 14, 12],
+          'circle-color': '#f97316', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5,
+          'circle-opacity': 0.9
+        }
+      });
+
+      // Airports - labels
+      map.addLayer({
+        id: 'airports-labels', type: 'symbol', source: 'airports',
+        'source-layer': MAP_CONFIG.AIRPORTS_SOURCE_LAYER,
+        minzoom: 7,
+        layout: {
+          'text-field': ['get', 'airport_name'], 'text-size': 11,
+          'text-offset': [0, 1.5], 'text-anchor': 'top', 'text-allow-overlap': false
+        },
+        paint: { 'text-color': '#fbbf24', 'text-halo-color': 'rgba(10,14,23,0.8)', 'text-halo-width': 2 }
+      });
+
+      // Cell Towers
+      map.addLayer({
+        id: 'towers-layer', type: 'circle', source: 'fcc-towers',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 3, 12, 6, 16, 10],
+          'circle-color': '#ef4444', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1,
+          'circle-opacity': 0.85
+        },
+        layout: { visibility: 'none' }
+      });
+
+      // Search Ring - fill
+      map.addLayer({
+        id: 'search-ring-fill', type: 'fill', source: 'search-ring',
+        paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.08 }
+      });
+
+      // Search Ring - stroke
+      map.addLayer({
+        id: 'search-ring-stroke', type: 'line', source: 'search-ring',
+        paint: { 'line-color': '#f59e0b', 'line-width': 2.5, 'line-dasharray': [3, 2] }
+      });
+
+      // Site Marker
+      map.addLayer({
+        id: 'site-marker-layer', type: 'circle', source: 'site-marker',
+        paint: {
+          'circle-radius': 8, 'circle-color': '#ef4444',
+          'circle-stroke-color': '#fff', 'circle-stroke-width': 3,
+          'circle-opacity': 1
+        }
+      });
+
+      // Site Marker pulse
+      map.addLayer({
+        id: 'site-marker-pulse', type: 'circle', source: 'site-marker',
+        paint: {
+          'circle-radius': 20, 'circle-color': '#ef4444', 'circle-opacity': 0.15,
+          'circle-stroke-color': '#ef4444', 'circle-stroke-width': 1, 'circle-stroke-opacity': 0.3
+        }
+      });
+    }
+
+    // ── Interactions ─────────────────────────────────────────────
+    function setupInteractions() {
+      // Parcel click
+      map.on('click', 'parcel-fill', (e) => {
+        if (!e.features || e.features.length === 0) return;
+        const props = e.features[0].properties;
+        if (currentPopup) currentPopup.remove();
+
+        let html = '<div class="popup-title"><i class="fas fa-vector-square" style="margin-right:6px;"></i>Parcel Info</div>';
+        const fields = [
+          ['Owner', props.owner || props.parcelnumb_no_formatting || ''],
+          ['Address', props.address || props.mailadd || ''],
+          ['APN', props.parcelnumb || props.apn || ''],
+          ['Acres', props.ll_gisacre ? parseFloat(props.ll_gisacre).toFixed(2) : ''],
+          ['Zoning', props.zoning || props.zoning_id || ''],
+          ['Land Use', props.usecode || props.landuse || ''],
+          ['County', props.county || ''],
+          ['State', props.state2 || '']
+        ];
+        fields.forEach(([label, value]) => {
+          if (value) html += `<div class="popup-row"><span class="label">${label}</span><span class="value">${value}</span></div>`;
+        });
+
+        currentPopup = new mapboxgl.Popup({ maxWidth: '320px' })
+          .setLngLat(e.lngLat).setHTML(html).addTo(map);
+      });
+
+      // Airport click
+      map.on('click', 'airports-circles', (e) => {
+        if (!e.features || e.features.length === 0) return;
+        const props = e.features[0].properties;
+        if (currentPopup) currentPopup.remove();
+
+        let html = '<div class="popup-title"><i class="fas fa-plane" style="margin-right:6px;"></i>' + (props.airport_name || 'Airport') + '</div>';
+        const fields = [
+          ['Municipality', props.municipality],
+          ['Region', props.airport_US_region],
+          ['Country', props.airport_country],
+          ['Elevation', props.airport_elevation_ft ? props.airport_elevation_ft + ' ft' : ''],
+          ['Type', props.airport_type]
+        ];
+        fields.forEach(([label, value]) => {
+          if (value) html += `<div class="popup-row"><span class="label">${label}</span><span class="value">${value}</span></div>`;
+        });
+
+        currentPopup = new mapboxgl.Popup({ maxWidth: '300px' })
+          .setLngLat(e.lngLat).setHTML(html).addTo(map);
+      });
+
+      // Tower click
+      map.on('click', 'towers-layer', (e) => {
+        if (!e.features || e.features.length === 0) return;
+        const props = e.features[0].properties;
+        if (currentPopup) currentPopup.remove();
+
+        let html = '<div class="popup-title"><i class="fas fa-broadcast-tower" style="margin-right:6px;"></i>Cell Tower</div>';
+        const fields = [
+          ['Registration #', props.reg_num],
+          ['Owner', props.owner],
+          ['Height', props.height ? props.height + ' ft' : ''],
+          ['Type', props.structure_type],
+          ['Status', props.status],
+          ['City', props.city],
+          ['State', props.state]
+        ];
+        fields.forEach(([label, value]) => {
+          if (value) html += `<div class="popup-row"><span class="label">${label}</span><span class="value">${value}</span></div>`;
+        });
+
+        currentPopup = new mapboxgl.Popup({ maxWidth: '300px' })
+          .setLngLat(e.lngLat).setHTML(html).addTo(map);
+      });
+
+      // Cursor changes
+      ['parcel-fill', 'airports-circles', 'towers-layer'].forEach(layer => {
+        map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
+        map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
+      });
+
+      // Update zoom in info panel
+      map.on('zoom', () => {
+        const z = document.getElementById('infoZoom');
+        if (z) z.textContent = map.getZoom().toFixed(1);
+      });
+
+      // Right-click to get coordinates
+      map.on('contextmenu', (e) => {
+        const { lng, lat } = e.lngLat;
+        document.getElementById('inputLat').value = lat.toFixed(6);
+        document.getElementById('inputLon').value = lng.toFixed(6);
+        showToast(`Coordinates captured: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+      });
+
+      // Enter key on inputs
+      ['inputLat', 'inputLon', 'inputRadius'].forEach(id => {
+        document.getElementById(id).addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') flyToCoords();
+        });
+      });
+    }
+
+    // ── Fly To Coordinates ──────────────────────────────────────
+    function flyToCoords() {
+      const latVal = document.getElementById('inputLat').value.trim();
+      const lonVal = document.getElementById('inputLon').value.trim();
+      const radiusVal = parseFloat(document.getElementById('inputRadius').value) || 0.5;
+      const unit = document.getElementById('inputUnit').value;
+
+      if (!latVal || !lonVal) {
+        showToast('Enter latitude and longitude');
+        return;
+      }
+
+      const lat = parseFloat(latVal);
+      const lon = parseFloat(lonVal);
+
+      if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        showToast('Invalid coordinates');
+        return;
+      }
+
+      // Convert radius to miles
+      let radiusMiles = radiusVal;
+      if (unit === 'km') radiusMiles = radiusVal * 0.621371;
+      else if (unit === 'feet') radiusMiles = radiusVal / 5280;
+
+      // Draw search ring
+      drawSearchRing(lat, lon, radiusMiles);
+
+      // Place site marker
+      placeSiteMarker(lat, lon);
+
+      // Fly to location
+      const zoom = radiusMiles <= 0.25 ? 16 : radiusMiles <= 0.5 ? 15 : radiusMiles <= 1 ? 14 : radiusMiles <= 2 ? 13 : 12;
+      map.flyTo({ center: [lon, lat], zoom: zoom, pitch: 45, bearing: -15, duration: 2000 });
+
+      // Show crosshair
+      document.getElementById('crosshair').classList.add('visible');
+
+      // Update info panel
+      const infoPanel = document.getElementById('infoPanel');
+      infoPanel.classList.remove('hidden');
+      document.getElementById('infoCoords').textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+      document.getElementById('infoRadius').textContent = `${radiusMiles.toFixed(2)} mi`;
+      document.getElementById('infoZoom').textContent = zoom.toString();
+
+      // Fetch elevation
+      fetchElevation(lat, lon);
+
+      // Fetch cell towers if layer is enabled
+      fetchCellTowers(lat, lon, radiusMiles);
+
+      showToast(`Flying to ${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+    }
+
+    // ── Draw Search Ring ────────────────────────────────────────
+    function drawSearchRing(lat, lon, radiusMiles) {
+      const radiusMeters = radiusMiles * 1609.34;
+      const points = 64;
+      const coords = [];
+
+      for (let i = 0; i <= points; i++) {
+        const angle = (i / points) * 360;
+        const rad = angle * Math.PI / 180;
+        const dLat = (radiusMeters / 111320) * Math.cos(rad);
+        const dLon = (radiusMeters / (111320 * Math.cos(lat * Math.PI / 180))) * Math.sin(rad);
+        coords.push([lon + dLon, lat + dLat]);
+      }
+
+      const geojson = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'Polygon', coordinates: [coords] }
+        }]
+      };
+
+      map.getSource('search-ring').setData(geojson);
+    }
+
+    // ── Place Site Marker ───────────────────────────────────────
+    function placeSiteMarker(lat, lon) {
+      const geojson = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'Point', coordinates: [lon, lat] }
+        }]
+      };
+      map.getSource('site-marker').setData(geojson);
+    }
+
+    // ── Fetch Elevation ─────────────────────────────────────────
+    async function fetchElevation(lat, lon) {
+      try {
+        const resp = await fetch(`https://api.mapbox.com/v4/mapbox.mapbox-terrain-v2/tilequery/${lon},${lat}.json?layers=contour&access_token=${MAP_CONFIG.MAPBOX_TOKEN}`);
+        const data = await resp.json();
+        if (data.features && data.features.length > 0) {
+          const elev = data.features[data.features.length - 1].properties.ele;
+          const elevFt = Math.round(elev * 3.28084);
+          document.getElementById('infoElev').textContent = `${elevFt} ft (${elev} m)`;
+        }
+      } catch (e) {
+        document.getElementById('infoElev').textContent = 'N/A';
+      }
+    }
+
+    // ── Fetch FCC Cell Towers ───────────────────────────────────
+    async function fetchCellTowers(lat, lon, radiusMiles) {
+      try {
+        // Use FCC ASR (Antenna Structure Registration) via their public API
+        const radiusKm = radiusMiles * 1.60934;
+        const url = `https://geo.fcc.gov/api/contours/find?lat=${lat}&lon=${lon}&distance=${radiusKm}&format=json`;
+
+        // Alternative: query the FCC ASR tower database directly
+        const bbox = getBbox(lat, lon, radiusMiles);
+        const asrUrl = `https://services.arcgis.com/jIL9msH9OI208GCb/arcgis/rest/services/Cellular_Towers/FeatureServer/0/query?where=1%3D1&outFields=*&geometry=${bbox.west},${bbox.south},${bbox.east},${bbox.north}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outSR=4326&f=geojson`;
+
+        const resp = await fetch(asrUrl);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.features && data.features.length > 0) {
+            map.getSource('fcc-towers').setData(data);
+            showToast(`Found ${data.features.length} cell towers nearby`);
+          }
+        }
+      } catch (e) {
+        console.log('Tower fetch error:', e);
+      }
+    }
+
+    function getBbox(lat, lon, radiusMiles) {
+      const dLat = radiusMiles / 69.0;
+      const dLon = radiusMiles / (69.0 * Math.cos(lat * Math.PI / 180));
+      return { north: lat + dLat, south: lat - dLat, east: lon + dLon, west: lon - dLon };
+    }
+
+    // ── Layer Controls ──────────────────────────────────────────
+    function toggleLayer(layerId, visible) {
+      map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+      layerStates[layerId] = visible;
+    }
+
+    function toggleAirports(visible) {
+      map.setLayoutProperty('airports-circles', 'visibility', visible ? 'visible' : 'none');
+      map.setLayoutProperty('airports-labels', 'visibility', visible ? 'visible' : 'none');
+    }
+
+    function toggleSearchRing(visible) {
+      map.setLayoutProperty('search-ring-fill', 'visibility', visible ? 'visible' : 'none');
+      map.setLayoutProperty('search-ring-stroke', 'visibility', visible ? 'visible' : 'none');
+      map.setLayoutProperty('site-marker-layer', 'visibility', visible ? 'visible' : 'none');
+      map.setLayoutProperty('site-marker-pulse', 'visibility', visible ? 'visible' : 'none');
+    }
+
+    function setOpacity(layerId, value) {
+      map.setPaintProperty(layerId, 'raster-opacity', value / 100);
+    }
+
+    // ── Features Panel ──────────────────────────────────────────
+    function toggleFeaturesPanel() {
+      featuresOpen = !featuresOpen;
+      document.getElementById('featuresPanel').classList.toggle('open', featuresOpen);
+      document.getElementById('btnFeatures').classList.toggle('active', featuresOpen);
+    }
+
+    // ── Style Switcher ──────────────────────────────────────────
+    function switchStyle(btn) {
+      const style = btn.dataset.style;
+      if (style === currentStyle) return;
+
+      // Save layer states
+      const savedStates = {};
+      document.querySelectorAll('.toggle-switch input').forEach(input => {
+        savedStates[input.id] = input.checked;
+      });
+
+      currentStyle = style;
+      map.setStyle(`mapbox://styles/mapbox/${style}`);
+
+      // Update active button
+      document.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      // Re-add sources and layers after style change
+      map.once('style.load', () => {
+        addAllSources();
+        addAllLayers();
+        setupInteractions();
+
+        // Restore layer states
+        Object.entries(savedStates).forEach(([id, checked]) => {
+          const input = document.getElementById(id);
+          if (input) {
+            input.checked = checked;
+            input.dispatchEvent(new Event('change'));
+          }
+        });
+      });
+    }
+
+    // ── Clear All ───────────────────────────────────────────────
+    function clearAll() {
+      document.getElementById('inputLat').value = '';
+      document.getElementById('inputLon').value = '';
+      document.getElementById('inputRadius').value = '0.5';
+      document.getElementById('crosshair').classList.remove('visible');
+      document.getElementById('infoPanel').classList.add('hidden');
+
+      // Clear search ring and marker
+      map.getSource('search-ring').setData({ type: 'FeatureCollection', features: [] });
+      map.getSource('site-marker').setData({ type: 'FeatureCollection', features: [] });
+      map.getSource('fcc-towers').setData({ type: 'FeatureCollection', features: [] });
+
+      if (currentPopup) currentPopup.remove();
+
+      // Reset view
+      map.flyTo({ center: MAP_CONFIG.DEFAULT_CENTER, zoom: MAP_CONFIG.DEFAULT_ZOOM, pitch: 0, bearing: 0, duration: 1500 });
+
+      showToast('Cleared');
+    }
+
+    // ── Toast ───────────────────────────────────────────────────
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+  </script>
+</body>
+</html>
