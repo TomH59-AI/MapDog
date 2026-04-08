@@ -1,6 +1,7 @@
 // MapDog - Site Acquisition Parcel Search Frontend
 let currentResults = []
-let currentMode = 'county' // 'county' or 'bulk'
+let currentScipData = null
+let currentMode = 'county' // 'county', 'coordinate', 'bulk', or 'scip'
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,24 +16,28 @@ document.addEventListener('DOMContentLoaded', () => {
 // Switch between search modes
 function switchMode(mode) {
   currentMode = mode
-  
+
   const countySection = document.getElementById('countyInput').parentElement.parentElement
   const coordinateSection = document.getElementById('coordinateSearchSection')
   const bulkSection = document.getElementById('bulkSearchSection')
+  const scipSection = document.getElementById('scipMapsSection')
   const countyBtn = document.getElementById('countyModeBtn')
   const coordinateBtn = document.getElementById('coordinateModeBtn')
   const bulkBtn = document.getElementById('bulkModeBtn')
-  
+  const scipBtn = document.getElementById('scipModeBtn')
+
   // Hide all sections
   countySection.classList.add('hidden')
   coordinateSection.classList.add('hidden')
   bulkSection.classList.add('hidden')
-  
+  scipSection.classList.add('hidden')
+
   // Reset button styles
   countyBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
   coordinateBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
   bulkBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
-  
+  scipBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all'
+
   // Show selected section and highlight button
   if (mode === 'county') {
     countySection.classList.remove('hidden')
@@ -43,8 +48,11 @@ function switchMode(mode) {
   } else if (mode === 'bulk') {
     bulkSection.classList.remove('hidden')
     bulkBtn.className = 'px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg transition-all'
+  } else if (mode === 'scip') {
+    scipSection.classList.remove('hidden')
+    scipBtn.className = 'px-4 py-2 bg-emerald-600 text-white font-semibold rounded-lg transition-all'
   }
-  
+
   // Clear results when switching
   document.getElementById('results').innerHTML = ''
 }
@@ -485,17 +493,51 @@ function displayResults(parcels, county, meta) {
   `
 }
 
-// Render individual parcel card
+// Render individual parcel card with FL Cadastral data
 function renderParcelCard(parcel, index, county) {
+  // Support both old and new data formats
   const pin = parcel.identifiers?.pin || `${county}-${index}`
-  const owner = parcel.owner?.primary_name || 'N/A'
-  const address = parcel.site?.address || 'No address'
-  const acres = parcel.land?.acres_gis || parcel.land?.acres_deed || 'N/A'
-  const zoning = parcel.land?.zoning || 'N/A'
-  const landUse = parcel.land?.land_use?.luse_desc || 'N/A'
-  const marketValue = parcel.valuation?.market?.total || 0
-  const city = parcel.site?.city || parcel.owner?.city || 'N/A'
-  
+
+  // Owner info - handle both old format (string) and new format (object)
+  const ownerName = typeof parcel.owner === 'object' ? parcel.owner?.name : (parcel.owner || 'N/A')
+  const ownerMailing = typeof parcel.owner === 'object' && parcel.owner?.mailingAddress ?
+    `${parcel.owner.mailingAddress.street}, ${parcel.owner.mailingAddress.city}, ${parcel.owner.mailingAddress.state} ${parcel.owner.mailingAddress.zip}`.replace(/^, |, $/g, '') : null
+
+  // Address - handle both formats
+  const address = parcel.address?.street || parcel.site?.address || 'No address'
+  const city = parcel.address?.city || parcel.site?.city || 'N/A'
+  const zip = parcel.address?.zip || ''
+
+  // Land info
+  const acres = parcel.acreage || parcel.land?.acres_gis || 'N/A'
+  const landUseCode = parcel.landUse?.dorCode || parcel.land?.zoning || 'N/A'
+
+  // Values - handle both formats
+  const justValue = parcel.values?.justValue || parcel.valuation?.market?.total || 0
+  const landValue = parcel.values?.landValue || 0
+  const improvementValue = parcel.values?.improvementValue || 0
+
+  // Legal description
+  const legal = parcel.legal?.sectionTownshipRange || ''
+  const legalDesc = parcel.legal?.description || ''
+
+  // Building info
+  const yearBuilt = parcel.building?.yearBuilt || null
+  const livingArea = parcel.building?.livingArea || 0
+  const numBuildings = parcel.building?.numBuildings || 0
+
+  // Sale info
+  const salePrice = parcel.sale?.price || 0
+  const saleYear = parcel.sale?.year || null
+
+  // Distance (for coordinate searches)
+  const distanceMiles = parcel.distanceMiles
+
+  // Coordinates
+  const lat = parcel.geometry?.latitude
+  const lon = parcel.geometry?.longitude
+  const googleMapsUrl = lat && lon ? `https://www.google.com/maps?q=${lat},${lon}` : null
+
   return `
     <div class="bg-gray-50 border-2 border-gray-200 rounded-lg p-4 hover:border-blue-400 transition-all">
       <div class="flex justify-between items-start">
@@ -503,40 +545,93 @@ function renderParcelCard(parcel, index, county) {
           <h4 class="font-bold text-lg text-gray-800 mb-2">
             <i class="fas fa-map-pin text-red-500 mr-2"></i>
             PIN: ${pin}
+            ${distanceMiles !== undefined ? `<span class="ml-2 text-sm font-normal text-green-600"><i class="fas fa-ruler mr-1"></i>${distanceMiles} mi</span>` : ''}
           </h4>
-          <div class="grid grid-cols-2 gap-2 text-sm mb-2">
-            <div class="text-gray-600">
-              <span class="font-semibold">Owner:</span> ${owner}
+
+          <!-- Owner Section -->
+          <div class="bg-blue-50 rounded p-2 mb-2">
+            <div class="text-sm font-semibold text-blue-800 mb-1">
+              <i class="fas fa-user mr-1"></i>Owner Information
             </div>
-            <div class="text-gray-600">
-              <span class="font-semibold">City:</span> ${city}
-            </div>
+            <div class="text-sm text-gray-700">${ownerName}</div>
+            ${ownerMailing && ownerMailing.trim() ? `
+              <div class="text-xs text-gray-500 mt-1">
+                <i class="fas fa-envelope mr-1"></i>Mailing: ${ownerMailing}
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Property Details Grid -->
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm mb-2">
             <div class="text-gray-600">
               <span class="font-semibold">Address:</span> ${address}
             </div>
             <div class="text-gray-600">
-              <span class="font-semibold">Acres:</span> ${typeof acres === 'string' ? parseFloat(acres).toFixed(2) : acres}
-            </div>
-            <div class="text-gray-600">
-              <span class="font-semibold">Zoning:</span> ${zoning}
-            </div>
-            <div class="text-gray-600">
-              <span class="font-semibold">Land Use:</span> ${landUse}
-            </div>
-            <div class="text-gray-600">
-              <span class="font-semibold">Market Value:</span> $${marketValue.toLocaleString()}
+              <span class="font-semibold">City:</span> ${city} ${zip}
             </div>
             <div class="text-gray-600">
               <span class="font-semibold">County:</span> ${county}
             </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">Acres:</span> ${typeof acres === 'number' ? acres.toFixed(2) : acres}
+            </div>
+            <div class="text-gray-600">
+              <span class="font-semibold">DOR Code:</span> ${landUseCode}
+            </div>
+            ${legal ? `
+              <div class="text-gray-600">
+                <span class="font-semibold">Sec-Twp-Rng:</span> ${legal}
+              </div>
+            ` : ''}
           </div>
-          ${parcel.meta?.pa_pin_link ? `
-            <a href="${parcel.meta.pa_pin_link}" target="_blank" class="text-blue-600 hover:text-blue-800 text-xs">
-              <i class="fas fa-external-link-alt mr-1"></i>View Property Details
-            </a>
+
+          <!-- Values Section -->
+          <div class="grid grid-cols-3 gap-2 text-xs bg-green-50 rounded p-2 mb-2">
+            <div class="text-green-800">
+              <span class="font-semibold">Just Value:</span><br>$${justValue.toLocaleString()}
+            </div>
+            <div class="text-green-700">
+              <span class="font-semibold">Land:</span><br>$${landValue.toLocaleString()}
+            </div>
+            <div class="text-green-700">
+              <span class="font-semibold">Improvements:</span><br>$${improvementValue.toLocaleString()}
+            </div>
+          </div>
+
+          <!-- Building & Sale Info -->
+          ${(yearBuilt || livingArea || salePrice) ? `
+            <div class="grid grid-cols-3 gap-2 text-xs text-gray-600 mb-2">
+              ${yearBuilt ? `<div><span class="font-semibold">Year Built:</span> ${yearBuilt}</div>` : '<div></div>'}
+              ${livingArea ? `<div><span class="font-semibold">Living Area:</span> ${livingArea.toLocaleString()} sqft</div>` : '<div></div>'}
+              ${salePrice && saleYear ? `<div><span class="font-semibold">Last Sale:</span> $${salePrice.toLocaleString()} (${saleYear})</div>` : '<div></div>'}
+            </div>
           ` : ''}
+
+          <!-- Legal Description (collapsible) -->
+          ${legalDesc ? `
+            <details class="text-xs mb-2">
+              <summary class="cursor-pointer text-gray-600 hover:text-gray-800">
+                <i class="fas fa-file-alt mr-1"></i>Legal Description
+              </summary>
+              <div class="mt-1 p-2 bg-gray-100 rounded text-gray-700">${legalDesc}</div>
+            </details>
+          ` : ''}
+
+          <!-- Action Links -->
+          <div class="flex gap-2 mt-2">
+            ${googleMapsUrl ? `
+              <a href="${googleMapsUrl}" target="_blank" class="text-blue-600 hover:text-blue-800 text-xs">
+                <i class="fas fa-map-marker-alt mr-1"></i>Google Maps
+              </a>
+            ` : ''}
+            ${lat && lon ? `
+              <span class="text-xs text-gray-500">
+                <i class="fas fa-globe mr-1"></i>${lat.toFixed(5)}, ${lon.toFixed(5)}
+              </span>
+            ` : ''}
+          </div>
         </div>
-        <button 
+        <button
           onclick="saveParcel('${pin.replace(/'/g, "\\'")}', '${county}', ${index})"
           class="ml-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all transform hover:scale-105"
           title="Save to favorites"
@@ -750,42 +845,69 @@ async function viewSearchHistory() {
   }
 }
 
-// Export current results to CSV
+// Export current results to CSV (FL Cadastral format)
 function exportResults() {
   if (!currentResults || currentResults.length === 0) {
     alert('No results to export. Please search first.')
     return
   }
-  
-  // Define CSV columns
+
+  // Define CSV columns for RF Site Acquisition
   const headers = [
-    'PIN', 'County', 'Owner', 'Address', 'City', 'Zipcode', 
-    'Acres (GIS)', 'Acres (Deed)', 'Zoning', 'Land Use', 
-    'Market Value', 'Assessed Value', 'Year Built', 'Property Link'
+    'PIN', 'County', 'Owner Name', 'Owner Mailing Address', 'Owner City', 'Owner State', 'Owner Zip',
+    'Site Address', 'Site City', 'Site Zip',
+    'Sec-Twp-Rng', 'Legal Description', 'Acres', 'DOR Land Use Code',
+    'Just Value', 'Land Value', 'Improvement Value',
+    'Year Built', 'Living Area (sqft)', 'Buildings',
+    'Last Sale Price', 'Last Sale Year',
+    'Latitude', 'Longitude', 'Distance (mi)', 'Google Maps'
   ]
-  
+
   // Build CSV rows
   const rows = currentResults.map(parcel => {
+    // Handle both old and new formats
+    const ownerName = typeof parcel.owner === 'object' ? parcel.owner?.name : (parcel.owner || '')
+    const ownerStreet = parcel.owner?.mailingAddress?.street || ''
+    const ownerCity = parcel.owner?.mailingAddress?.city || ''
+    const ownerState = parcel.owner?.mailingAddress?.state || ''
+    const ownerZip = parcel.owner?.mailingAddress?.zip || ''
+
+    const lat = parcel.geometry?.latitude || ''
+    const lon = parcel.geometry?.longitude || ''
+    const googleMaps = lat && lon ? `https://www.google.com/maps?q=${lat},${lon}` : ''
+
     return [
       parcel.identifiers?.pin || '',
-      parcel.meta?.county || '',
-      parcel.owner?.primary_name || '',
-      parcel.site?.address || parcel.owner?.address_line1 || '',
-      parcel.site?.city || parcel.owner?.city || '',
-      parcel.site?.zipcode || parcel.owner?.zipcode || '',
-      parcel.land?.acres_gis || '',
-      parcel.land?.acres_deed || '',
-      parcel.land?.zoning || '',
-      parcel.land?.land_use?.luse_desc || '',
-      parcel.valuation?.market?.total || '',
-      parcel.valuation?.assessed_total || '',
-      parcel.building?.year_built_actual || '',
-      parcel.meta?.pa_pin_link || ''
+      parcel._searchRing?.county || '',
+      ownerName,
+      ownerStreet,
+      ownerCity,
+      ownerState,
+      ownerZip,
+      parcel.address?.street || parcel.site?.address || '',
+      parcel.address?.city || parcel.site?.city || '',
+      parcel.address?.zip || '',
+      parcel.legal?.sectionTownshipRange || '',
+      parcel.legal?.description || '',
+      parcel.acreage || parcel.land?.acres_gis || '',
+      parcel.landUse?.dorCode || parcel.land?.zoning || '',
+      parcel.values?.justValue || parcel.valuation?.market?.total || '',
+      parcel.values?.landValue || '',
+      parcel.values?.improvementValue || '',
+      parcel.building?.yearBuilt || parcel.building?.year_built_actual || '',
+      parcel.building?.livingArea || '',
+      parcel.building?.numBuildings || '',
+      parcel.sale?.price || '',
+      parcel.sale?.year || '',
+      lat,
+      lon,
+      parcel.distanceMiles || '',
+      googleMaps
     ].map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')
   })
-  
+
   const csv = [headers.join(','), ...rows].join('\n')
-  
+
   // Download
   const blob = new Blob([csv], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
@@ -794,8 +916,8 @@ function exportResults() {
   a.download = `mapdog-parcels-${Date.now()}.csv`
   a.click()
   URL.revokeObjectURL(url)
-  
-  alert(`✅ Exported ${currentResults.length} parcels to CSV`)
+
+  alert(`✅ Exported ${currentResults.length} parcels to CSV\n\nIncludes owner contact info, legal descriptions, values, and coordinates for RF site acquisition.`)
 }
 
 // Load statistics
@@ -830,10 +952,10 @@ function showLoading(show, message = 'Fetching parcels...') {
 // Show error message
 function showError(message) {
   const resultsDiv = document.getElementById('results')
-  
+
   // Parse message for better display
   const lines = message.split('\n').filter(line => line.trim())
-  
+
   resultsDiv.innerHTML = `
     <div class="bg-red-100 border-2 border-red-400 rounded-lg p-6 text-center">
       <i class="fas fa-exclamation-triangle text-red-600 text-4xl mb-3"></i>
@@ -843,12 +965,461 @@ function showError(message) {
         }
         return `<p class="text-red-800 font-semibold ${i > 0 ? 'mt-2' : ''}">${line}</p>`
       }).join('')}
-      <button 
-        onclick="document.getElementById('results').innerHTML=''" 
+      <button
+        onclick="document.getElementById('results').innerHTML=''"
         class="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
       >
         Dismiss
       </button>
     </div>
   `
+}
+
+// ==================== SCIP MAPS FUNCTIONS ====================
+
+// Generate SCIP Maps for a site
+async function generateScipMaps() {
+  const siteName = document.getElementById('scipSiteName').value.trim()
+  const county = document.getElementById('scipCounty').value.trim().toUpperCase()
+  const lat = document.getElementById('scipLat').value.trim()
+  const lon = document.getElementById('scipLon').value.trim()
+  const address = document.getElementById('scipAddress').value.trim()
+  const zoom = document.getElementById('scipZoom').value
+
+  // Validate inputs
+  if (!lat || !lon) {
+    alert('⚠️ Please enter latitude and longitude\n\nGet these from your RF Engineer or site survey')
+    return
+  }
+
+  const latitude = parseFloat(lat)
+  const longitude = parseFloat(lon)
+
+  if (isNaN(latitude) || latitude < -90 || latitude > 90) {
+    alert('⚠️ Invalid latitude\n\nLatitude must be between -90 and 90')
+    return
+  }
+
+  if (isNaN(longitude) || longitude < -180 || longitude > 180) {
+    alert('⚠️ Invalid longitude\n\nLongitude must be between -180 and 180')
+    return
+  }
+
+  showLoading(true, 'Generating SCIP maps...')
+
+  try {
+    const response = await fetch('/api/scip/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lat,
+        lon,
+        siteName,
+        county,
+        address,
+        zoom: parseInt(zoom)
+      })
+    })
+
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error + (data.hint ? '\n\n💡 ' + data.hint : ''))
+    }
+
+    currentScipData = data
+    displayScipResults(data)
+    loadStats()
+
+  } catch (error) {
+    showError(error.message)
+  } finally {
+    showLoading(false)
+  }
+}
+
+// Display SCIP map results
+function displayScipResults(data) {
+  const resultsDiv = document.getElementById('results')
+  const site = data.site
+  const maps = data.maps
+  const searchRing = site.searchRing || {}
+
+  // Color mappings for Tailwind classes
+  const colorMap = {
+    'blue': { bg: 'bg-blue-50', border: 'border-blue-300', text: 'text-blue-600', btn: 'bg-blue-600 hover:bg-blue-700' },
+    'green': { bg: 'bg-green-50', border: 'border-green-300', text: 'text-green-600', btn: 'bg-green-600 hover:bg-green-700' },
+    'cyan': { bg: 'bg-cyan-50', border: 'border-cyan-300', text: 'text-cyan-600', btn: 'bg-cyan-600 hover:bg-cyan-700' },
+    'purple': { bg: 'bg-purple-50', border: 'border-purple-300', text: 'text-purple-600', btn: 'bg-purple-600 hover:bg-purple-700' },
+    'orange': { bg: 'bg-orange-50', border: 'border-orange-300', text: 'text-orange-600', btn: 'bg-orange-600 hover:bg-orange-700' },
+    'teal': { bg: 'bg-teal-50', border: 'border-teal-300', text: 'text-teal-600', btn: 'bg-teal-600 hover:bg-teal-700' },
+    'yellow': { bg: 'bg-yellow-50', border: 'border-yellow-300', text: 'text-yellow-600', btn: 'bg-yellow-600 hover:bg-yellow-700' },
+    'sky': { bg: 'bg-sky-50', border: 'border-sky-300', text: 'text-sky-600', btn: 'bg-sky-600 hover:bg-sky-700' },
+    'indigo': { bg: 'bg-indigo-50', border: 'border-indigo-300', text: 'text-indigo-600', btn: 'bg-indigo-600 hover:bg-indigo-700' },
+    'red': { bg: 'bg-red-50', border: 'border-red-300', text: 'text-red-600', btn: 'bg-red-600 hover:bg-red-700' }
+  }
+
+  resultsDiv.innerHTML = `
+    <div class="mb-6 p-4 bg-emerald-50 border-2 border-emerald-400 rounded-lg">
+      <div class="flex justify-between items-start">
+        <div class="flex-1">
+          <h3 class="text-2xl font-bold text-gray-800">
+            <i class="fas fa-map-marked-alt text-emerald-600 mr-2"></i>
+            SCIP Maps - ${site.name}
+          </h3>
+          <p class="text-sm text-red-600 font-semibold mt-1">
+            <i class="fas fa-bullseye mr-1"></i>Client: ${data.meta.client || 'Verizon'}
+          </p>
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3 text-sm">
+            <div><span class="font-semibold">Coordinates:</span> ${site.coordinates.latitude.toFixed(6)}, ${site.coordinates.longitude.toFixed(6)}</div>
+            <div><span class="font-semibold">DMS:</span> ${site.coordinates.dms.lat}</div>
+            <div><span class="font-semibold">DMS:</span> ${site.coordinates.dms.lon}</div>
+            ${site.county ? `<div><span class="font-semibold">County:</span> ${site.county}</div>` : ''}
+            ${site.address ? `<div><span class="font-semibold">Address:</span> ${site.address}</div>` : ''}
+            <div class="text-red-600 font-semibold">
+              <i class="fas fa-circle-notch mr-1"></i>Search Ring: ${searchRing.radiusMiles || 0.5} mi (${searchRing.radiusFeet || 2640} ft)
+            </div>
+          </div>
+          <p class="text-xs text-emerald-700 mt-2">
+            <i class="fas fa-clock mr-1"></i>Generated: ${new Date(data.meta.generated).toLocaleString()}
+          </p>
+        </div>
+        <div class="flex flex-col gap-2 ml-4">
+          <button
+            onclick="exportScipPdf()"
+            class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all text-sm"
+            title="Export SCIP package summary"
+          >
+            <i class="fas fa-file-pdf mr-2"></i>Export Summary
+          </button>
+          <button
+            onclick="exportToNotion()"
+            class="px-4 py-2 bg-gray-800 hover:bg-black text-white rounded-lg transition-all text-sm"
+            title="Export to Notion database"
+          >
+            <i class="fas fa-database mr-2"></i>Export to Notion
+          </button>
+          <button
+            onclick="openAllScipMaps()"
+            class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-all text-sm"
+            title="Open all maps in new tabs"
+          >
+            <i class="fas fa-external-link-alt mr-2"></i>Open All
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map Requirements Banner -->
+    <div class="mb-4 p-3 bg-red-50 border-2 border-red-300 rounded-lg">
+      <h4 class="font-bold text-red-800 mb-2">
+        <i class="fas fa-exclamation-triangle mr-2"></i>SCIP Map Requirements (Verizon Standard)
+      </h4>
+      <ul class="text-xs text-red-700 grid grid-cols-2 md:grid-cols-3 gap-1">
+        ${(data.meta.requirements || []).map(req => `<li><i class="fas fa-check mr-1"></i>${req}</li>`).join('')}
+      </ul>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      ${maps.map(map => {
+        const colors = colorMap[map.color] || colorMap['blue']
+        const hasLegend = map.legend && Object.keys(map.legend).length > 0
+        return `
+          <div class="${colors.bg} border-2 ${colors.border} rounded-lg p-4 hover:shadow-lg transition-all">
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex items-center">
+                <i class="fas ${map.icon} ${colors.text} text-2xl mr-3"></i>
+                <div>
+                  <h4 class="font-bold text-lg text-gray-800">${map.name}</h4>
+                  <p class="text-xs text-gray-600">${map.description}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Search Ring Info -->
+            ${map.searchRing ? `
+              <div class="text-xs bg-red-100 text-red-700 p-2 rounded mb-3">
+                <i class="fas fa-crosshairs mr-1"></i>
+                <span class="font-semibold">Search Ring:</span>
+                ${map.searchRing.radiusMiles} mi (${map.searchRing.radiusFeet} ft) radius |
+                <span class="text-red-800">Red waypoint at center</span>
+              </div>
+            ` : ''}
+
+            <div class="text-xs text-gray-500 mb-3">
+              <i class="fas fa-database mr-1"></i>Source: ${map.source}
+              ${map.requiresKey ? '<span class="ml-2 text-yellow-600"><i class="fas fa-key mr-1"></i>API Key Required</span>' : ''}
+            </div>
+
+            ${map.note ? `
+              <div class="text-xs text-yellow-700 bg-yellow-100 p-2 rounded mb-3">
+                <i class="fas fa-info-circle mr-1"></i>${map.note}
+              </div>
+            ` : ''}
+
+            <!-- Legend/Key for color-coded maps -->
+            ${hasLegend ? `
+              <details class="mb-3">
+                <summary class="text-xs font-semibold text-gray-700 cursor-pointer hover:text-gray-900">
+                  <i class="fas fa-palette mr-1"></i>Legend / Map Key
+                </summary>
+                <div class="mt-2 p-2 bg-white rounded border text-xs">
+                  ${Object.entries(map.legend).map(([key, value]) => `
+                    <div class="flex justify-between py-1 border-b border-gray-100 last:border-0">
+                      <span class="font-semibold">${key}</span>
+                      <span class="text-gray-600">${value}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </details>
+            ` : ''}
+
+            <div class="flex flex-wrap gap-2">
+              ${map.viewerUrl ? `
+                <a href="${map.viewerUrl}" target="_blank" class="px-3 py-1 ${colors.btn} text-white text-sm rounded transition-all">
+                  <i class="fas fa-external-link-alt mr-1"></i>Open Map
+                </a>
+              ` : ''}
+              ${map.altViewerUrl ? `
+                <a href="${map.altViewerUrl}" target="_blank" class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded transition-all">
+                  <i class="fas fa-map mr-1"></i>Alt Viewer
+                </a>
+              ` : ''}
+              ${map.esriUrl ? `
+                <a href="${map.esriUrl}" target="_blank" class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded transition-all">
+                  <i class="fas fa-image mr-1"></i>Static Image
+                </a>
+              ` : ''}
+              ${map.caltopoUrl ? `
+                <a href="${map.caltopoUrl}" target="_blank" class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded transition-all">
+                  <i class="fas fa-mountain mr-1"></i>CalTopo
+                </a>
+              ` : ''}
+              ${map.regridUrl ? `
+                <a href="${map.regridUrl}" target="_blank" class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded transition-all">
+                  <i class="fas fa-vector-square mr-1"></i>Regrid
+                </a>
+              ` : ''}
+              ${map.faaUrl ? `
+                <a href="${map.faaUrl}" target="_blank" class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded transition-all">
+                  <i class="fas fa-plane mr-1"></i>FAA OE/AAA
+                </a>
+              ` : ''}
+              ${map.fccUrl ? `
+                <a href="${map.fccUrl}" target="_blank" class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded transition-all">
+                  <i class="fas fa-broadcast-tower mr-1"></i>FCC ASR
+                </a>
+              ` : ''}
+            </div>
+          </div>
+        `
+      }).join('')}
+    </div>
+
+    <div class="mt-6 p-4 bg-gray-100 border border-gray-300 rounded-lg">
+      <h4 class="font-semibold text-gray-800 mb-2">
+        <i class="fas fa-clipboard-list mr-2"></i>SCIP Package Checklist
+      </h4>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
+        ${maps.map(map => `
+          <label class="flex items-center cursor-pointer">
+            <input type="checkbox" id="scip-check-${map.id}" class="mr-2 rounded">
+            <span class="text-gray-700">${map.name}</span>
+          </label>
+        `).join('')}
+      </div>
+      <p class="text-xs text-gray-500 mt-3">
+        <i class="fas fa-info-circle mr-1"></i>
+        Check off each map as you save it to your SCIP package folder
+      </p>
+    </div>
+  `
+}
+
+// Open all SCIP maps in new tabs
+function openAllScipMaps() {
+  if (!currentScipData || !currentScipData.maps) {
+    alert('No SCIP data available. Please generate maps first.')
+    return
+  }
+
+  const confirmOpen = confirm(`This will open ${currentScipData.maps.length} map viewers in new tabs. Continue?`)
+  if (!confirmOpen) return
+
+  currentScipData.maps.forEach((map, index) => {
+    setTimeout(() => {
+      if (map.viewerUrl) {
+        window.open(map.viewerUrl, `_blank_${map.id}`)
+      }
+    }, index * 300) // Stagger opens to avoid popup blocker
+  })
+}
+
+// Clear SCIP form
+function clearScipForm() {
+  document.getElementById('scipSiteName').value = ''
+  document.getElementById('scipCounty').value = ''
+  document.getElementById('scipLat').value = ''
+  document.getElementById('scipLon').value = ''
+  document.getElementById('scipAddress').value = ''
+  document.getElementById('scipZoom').value = '17'
+  document.getElementById('scipZoomValue').textContent = '17'
+  document.getElementById('results').innerHTML = ''
+  currentScipData = null
+}
+
+// Export SCIP summary as text/HTML for printing
+function exportScipPdf() {
+  if (!currentScipData) {
+    alert('No SCIP data available. Please generate maps first.')
+    return
+  }
+
+  const site = currentScipData.site
+  const maps = currentScipData.maps
+
+  // Create printable HTML content
+  const printContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SCIP Package - ${site.name}</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+    h1 { color: #059669; border-bottom: 2px solid #059669; padding-bottom: 10px; }
+    h2 { color: #374151; margin-top: 30px; }
+    .site-info { background: #f0fdf4; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    .site-info p { margin: 5px 0; }
+    .map-list { margin: 20px 0; }
+    .map-item { background: #f9fafb; padding: 12px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #059669; }
+    .map-item h3 { margin: 0 0 5px 0; color: #1f2937; }
+    .map-item p { margin: 5px 0; font-size: 14px; color: #6b7280; }
+    .map-item a { color: #059669; text-decoration: none; }
+    .map-item a:hover { text-decoration: underline; }
+    .checklist { margin-top: 30px; }
+    .checklist-item { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px dashed #d1d5db; }
+    .checkbox { width: 20px; height: 20px; border: 2px solid #9ca3af; margin-right: 10px; }
+    .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #d1d5db; font-size: 12px; color: #9ca3af; }
+    @media print { body { padding: 0; } }
+  </style>
+</head>
+<body>
+  <h1>SCIP Package - Site Candidate Information</h1>
+
+  <div class="site-info">
+    <h2 style="margin-top: 0;">Site Information</h2>
+    <p><strong>Site Name:</strong> ${site.name}</p>
+    <p><strong>Coordinates:</strong> ${site.coordinates.latitude.toFixed(6)}, ${site.coordinates.longitude.toFixed(6)}</p>
+    <p><strong>DMS:</strong> ${site.coordinates.dms.lat}, ${site.coordinates.dms.lon}</p>
+    ${site.county ? `<p><strong>County:</strong> ${site.county}</p>` : ''}
+    ${site.address ? `<p><strong>Address:</strong> ${site.address}</p>` : ''}
+    <p><strong>Generated:</strong> ${new Date(currentScipData.meta.generated).toLocaleString()}</p>
+  </div>
+
+  <h2>Map Sources</h2>
+  <div class="map-list">
+    ${maps.map(map => `
+      <div class="map-item">
+        <h3>${map.name}</h3>
+        <p>${map.description}</p>
+        <p><strong>Source:</strong> ${map.source}</p>
+        ${map.viewerUrl ? `<p><a href="${map.viewerUrl}" target="_blank">Open Interactive Map</a></p>` : ''}
+        ${map.note ? `<p><em>Note: ${map.note}</em></p>` : ''}
+      </div>
+    `).join('')}
+  </div>
+
+  <div class="checklist">
+    <h2>SCIP Package Checklist</h2>
+    ${maps.map(map => `
+      <div class="checklist-item">
+        <div class="checkbox"></div>
+        <span>${map.name} - Captured and saved to package</span>
+      </div>
+    `).join('')}
+  </div>
+
+  <div class="footer">
+    <p>Generated by MapDog - Site Acquisition Parcel Intelligence</p>
+    <p>Coordinates: ${site.coordinates.latitude.toFixed(6)}, ${site.coordinates.longitude.toFixed(6)}</p>
+  </div>
+</body>
+</html>
+  `
+
+  // Open in new window for printing
+  const printWindow = window.open('', '_blank')
+  printWindow.document.write(printContent)
+  printWindow.document.close()
+
+  // Trigger print dialog after content loads
+  printWindow.onload = function() {
+    printWindow.print()
+  }
+}
+
+// Export SCIP data to Notion database
+async function exportToNotion() {
+  if (!currentScipData) {
+    alert('No SCIP data available. Please generate maps first.')
+    return
+  }
+
+  const site = currentScipData.site
+  const maps = currentScipData.maps
+
+  showLoading(true, 'Exporting to Notion...')
+
+  try {
+    const response = await fetch('/api/notion/export-scip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        siteName: site.name,
+        county: site.county,
+        coordinates: site.coordinates,
+        address: site.address,
+        maps: maps.map(m => ({ id: m.id, name: m.name })),
+        generatedAt: currentScipData.meta.generated
+      })
+    })
+
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error + (data.details ? '\n\n' + JSON.stringify(data.details) : ''))
+    }
+
+    // Show success with link to Notion page
+    const resultsDiv = document.getElementById('results')
+    const existingContent = resultsDiv.innerHTML
+
+    // Add success banner at the top
+    const successBanner = `
+      <div class="mb-4 p-4 bg-green-50 border-2 border-green-400 rounded-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <h4 class="font-bold text-green-800">
+              <i class="fas fa-check-circle mr-2"></i>Exported to Notion!
+            </h4>
+            <p class="text-sm text-green-700 mt-1">SCIP data for "${site.name}" has been saved to your Notion database.</p>
+          </div>
+          ${data.pageUrl ? `
+            <a href="${data.pageUrl}" target="_blank" class="px-4 py-2 bg-gray-800 hover:bg-black text-white rounded-lg text-sm">
+              <i class="fas fa-external-link-alt mr-2"></i>Open in Notion
+            </a>
+          ` : ''}
+        </div>
+      </div>
+    `
+
+    resultsDiv.innerHTML = successBanner + existingContent
+
+    alert(`✅ SCIP data exported to Notion!\n\nSite: ${site.name}\nStatus: Active`)
+
+  } catch (error) {
+    showError('Failed to export to Notion: ' + error.message)
+  } finally {
+    showLoading(false)
+  }
 }
